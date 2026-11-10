@@ -136,6 +136,11 @@ build, so the pill uses the 2 dp default rather than centring on a hole rect.
 
 ## Changelog
 
+- **4.7** — launcher layout fixes: page dots above the dock, `Aa` toggle moved to
+  the top-right, dock resized so labels fit.
+- **4.6** — Liquid Glass launcher: parallax `WallpaperView`, `GlassPager` (two
+  pages, drag + snap), glass quick-action widget, dock, jiggle edit mode with
+  `−` badges, grayscale tint toggle.
 - **4.5** — launcher: `LauncherActivity` registered for `CATEGORY_HOME`, clock,
   4-column app grid; `<queries>` added so the grid sees every launchable app.
 - **4.4** — "Set as default home screen" opens the system home-app settings, plus

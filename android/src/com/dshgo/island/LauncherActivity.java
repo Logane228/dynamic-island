@@ -1,11 +1,15 @@
 package com.dshgo.island;
 
 import android.app.Activity;
-import android.app.role.RoleManager;
+import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Color;
+import android.graphics.ColorMatrix;
+import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -15,6 +19,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -30,59 +35,525 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
+import java.util.Set;
 
 /**
- * Minimal home screen: clock, app grid, and a shortcut to the island settings.
- * Registering CATEGORY_HOME lets the user pick it as the default launcher.
+ * Liquid-glass home screen: parallax wallpaper, two swipeable pages, an
+ * interactive quick-action widget, dock, and iOS-style jiggle editing.
  */
 public class LauncherActivity extends Activity {
 
-    private final Handler handler = new Handler(Looper.getMainLooper());
-    private final Map<String, Drawable> iconCache = new HashMap<>();
+    private static final int PAGE_ONE_COUNT = 16;
 
+    private final Handler handler = new Handler(Looper.getMainLooper());
+
+    private WallpaperView wallpaper;
+    private GlassPager pager;
+    private LinearLayout dots;
     private TextView clock;
     private TextView date;
-    private TextView defaultChip;
-    private List<ResolveInfo> apps = new ArrayList<>();
+
+    private GridView grid0;
+    private GridView grid1;
+    private AppAdapter adapter0;
+    private AppAdapter adapter1;
+
+    private final List<AppEntry> pageApps0 = new ArrayList<>();
+    private final List<AppEntry> pageApps1 = new ArrayList<>();
+    private final Set<String> hidden = new HashSet<>();
+
+    private boolean jiggle = false;
+    private boolean tinted = false;
 
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             updateClock();
-            handler.postDelayed(this, 15000);
+            handler.postDelayed(this, 20000);
         }
     };
+
+    // ------------------------------------------------------------------
+    // Lifecycle
+    // ------------------------------------------------------------------
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        hidden.addAll(prefs().getStringSet("hiddenApps", new HashSet<String>()));
         buildUi();
         loadApps();
         updateClock();
-        updateDefaultChip();
     }
 
-    @Override
-    protected void onResume() {
+    @Override protected void onResume() {
         super.onResume();
         handler.removeCallbacks(tick);
         handler.post(tick);
-        updateDefaultChip();
     }
 
-    @Override
-    protected void onPause() {
+    @Override protected void onPause() {
         super.onPause();
         handler.removeCallbacks(tick);
     }
 
-    @Override
-    public void onBackPressed() {
-        // home screen: back does nothing
+    @Override public void onBackPressed() {
+        if (jiggle) { exitJiggle(); return; }
+        // home screen: swallow back
     }
+
+    private SharedPreferences prefs() {
+        return getSharedPreferences("island", Context.MODE_PRIVATE);
+    }
+
+    // ------------------------------------------------------------------
+    // UI
+    // ------------------------------------------------------------------
+
+    private void buildUi() {
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(0xFF05060A);
+
+        wallpaper = new WallpaperView(this);
+        root.addView(wallpaper, match());
+
+        pager = new GlassPager(this);
+        pager.setListener(new GlassPager.Listener() {
+            @Override public void onPageChanged(int page) {
+                updateDots(page);
+            }
+            @Override public void onScroll(float offsetPx, float fraction) {
+                wallpaper.setParallax(offsetPx);
+            }
+        });
+        root.addView(pager, match());
+
+        pager.addView(buildPage0(), match());
+        pager.addView(buildPage1(), match());
+
+        // header (clock) — floats above the pages
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.VERTICAL);
+        header.setPadding(dp(24), dp(28), dp(24), 0);
+        clock = new TextView(this);
+        clock.setTextColor(Color.WHITE);
+        clock.setTextSize(44f);
+        clock.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
+        clock.setIncludeFontPadding(false);
+        header.addView(clock);
+        date = new TextView(this);
+        date.setTextColor(0xB3FFFFFF);
+        date.setTextSize(13f);
+        header.addView(date);
+
+        FrameLayout.LayoutParams hlp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hlp.gravity = Gravity.TOP | Gravity.START;
+        root.addView(header, hlp);
+
+        // appearance toggle
+        TextView appearance = new TextView(this);
+        appearance.setText("Aa");
+        appearance.setTextColor(Color.WHITE);
+        appearance.setTextSize(13f);
+        appearance.setGravity(Gravity.CENTER);
+        appearance.setBackground(glass(0x1FFFFFFF, 22));
+        appearance.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { toggleTint(); }
+        });
+        FrameLayout.LayoutParams alp = new FrameLayout.LayoutParams(dp(46), dp(46));
+        alp.gravity = Gravity.END | Gravity.TOP;
+        alp.rightMargin = dp(18);
+        alp.topMargin = dp(96);
+        root.addView(appearance, alp);
+
+        // dots
+        dots = new LinearLayout(this);
+        dots.setOrientation(LinearLayout.HORIZONTAL);
+        dots.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams dlp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        dlp.gravity = Gravity.BOTTOM;
+        dlp.bottomMargin = dp(118);
+        root.addView(dots, dlp);
+        for (int i = 0; i < 2; i++) {
+            View dot = new View(this);
+            GradientDrawable g = new GradientDrawable();
+            g.setShape(GradientDrawable.OVAL);
+            g.setColor(i == 0 ? 0xFFFFFFFF : 0x55FFFFFF);
+            dot.setBackground(g);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(6), dp(6));
+            lp.rightMargin = dp(6);
+            dots.addView(dot, lp);
+        }
+
+        // dock
+        LinearLayout dock = new LinearLayout(this);
+        dock.setOrientation(LinearLayout.HORIZONTAL);
+        dock.setGravity(Gravity.CENTER);
+        dock.setBackground(glass(0x1AFFFFFF, 30));
+        dock.setPadding(dp(10), dp(10), dp(10), dp(10));
+        dock.setElevation(dp(12));
+
+        addDockItem(dock, "Téléphone", "com.google.android.dialer", dialIntent());
+        addDockItem(dock, "Messages", "com.google.android.apps.messaging", smsIntent());
+        addDockItem(dock, "Chrome", "com.android.chrome", webIntent());
+        addDockItem(dock, "Island", getPackageName(),
+                new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+
+        FrameLayout.LayoutParams dockLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(96));
+        dockLp.gravity = Gravity.BOTTOM;
+        dockLp.leftMargin = dp(14);
+        dockLp.rightMargin = dp(14);
+        dockLp.bottomMargin = dp(12);
+        root.addView(dock, dockLp);
+
+        setContentView(root);
+    }
+
+    private void addDockItem(LinearLayout dock, String label, String pkg, Intent intent) {
+        LinearLayout cell = new LinearLayout(this);
+        cell.setOrientation(LinearLayout.VERTICAL);
+        cell.setGravity(Gravity.CENTER);
+        cell.setOnClickListener(v -> launchIntent(intent));
+
+        ImageView icon = new ImageView(this);
+        Drawable drawable = null;
+        try {
+            drawable = getPackageManager().getApplicationIcon(pkg);
+        } catch (Exception ignored) { }
+        if (drawable == null) {
+            GradientDrawable g = new GradientDrawable();
+            g.setColor(0x33FFFFFF);
+            g.setCornerRadius(dp(16));
+            icon.setImageDrawable(g);
+        } else {
+            icon.setImageDrawable(drawable);
+        }
+        cell.addView(icon, new LinearLayout.LayoutParams(dp(46), dp(46)));
+
+        TextView caption = new TextView(this);
+        caption.setText(label);
+        caption.setTextColor(0xCCFFFFFF);
+        caption.setTextSize(10f);
+        caption.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        clp.topMargin = dp(4);
+        cell.addView(caption, clp);
+
+        dock.addView(cell, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+    }
+
+    private View buildPage0() {
+        LinearLayout column = new LinearLayout(this);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setPadding(dp(20), dp(120), dp(20), dp(150));
+
+        LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        wlp.bottomMargin = dp(14);
+        column.addView(buildWidget(), wlp);
+
+        grid0 = buildGrid(column);
+        adapter0 = new AppAdapter(pageApps0);
+        grid0.setAdapter(adapter0);
+        return column;
+    }
+
+    private View buildPage1() {
+        LinearLayout column = new LinearLayout(this);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setPadding(dp(20), dp(120), dp(20), dp(150));
+
+        grid1 = buildGrid(column);
+        adapter1 = new AppAdapter(pageApps1);
+        grid1.setAdapter(adapter1);
+        return column;
+    }
+
+    private GridView buildGrid(LinearLayout parent) {
+        GridView grid = new GridView(this);
+        grid.setNumColumns(4);
+        grid.setVerticalSpacing(dp(16));
+        grid.setHorizontalSpacing(dp(2));
+        grid.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);
+        grid.setClipToPadding(false);
+        grid.setSelector(new android.graphics.drawable.ColorDrawable(0x00000000));
+        grid.setPadding(0, dp(18), 0, 0);
+        grid.setOnItemClickListener((parentView, view, position, id) -> {
+            if (jiggle) { exitJiggle(); return; }
+            AppAdapter adapter = (AppAdapter) parentView.getAdapter();
+            launchIntent(adapter.getItemEntry(position).launch);
+        });
+        grid.setOnItemLongClickListener((parentView, view, position, id) -> {
+            enterJiggle();
+            return true;
+        });
+        parent.addView(grid, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        return grid;
+    }
+
+    private View buildWidget() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(16), dp(16), dp(16), dp(14));
+        card.setBackground(glass(0x1FFFFFFF, 30));
+        card.setElevation(dp(10));
+
+        TextView eyebrow = new TextView(this);
+        eyebrow.setText("RACCOURCIS");
+        eyebrow.setTextSize(10f);
+        eyebrow.setLetterSpacing(0.14f);
+        eyebrow.setTextColor(0x99FFFFFF);
+        card.addView(eyebrow);
+
+        TextView title = new TextView(this);
+        title.setText("Bonjour");
+        title.setTextSize(19f);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setTextColor(Color.WHITE);
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tlp.topMargin = dp(2);
+        tlp.bottomMargin = dp(12);
+        card.addView(title, tlp);
+
+        LinearLayout call = quickRow("A", "Appeler Alex", "Mobile", true);
+        call.setOnClickListener(v -> launchIntent(dialIntent()));
+        card.addView(call);
+
+        LinearLayout tiles = new LinearLayout(this);
+        tiles.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams tilesLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tilesLp.topMargin = dp(6);
+
+        LinearLayout repo = quickTile("🌐", "Ouvrir le repo", "github.com");
+        repo.setOnClickListener(v -> launchIntent(webIntent()));
+        tiles.addView(repo, tileWeight());
+
+        LinearLayout wifi = quickTile("📶", "Wi‑Fi", "Activé");
+        wifi.setOnClickListener(v -> {
+            Intent panel = Build.VERSION.SDK_INT >= 29
+                    ? new Intent(Settings.Panel.ACTION_WIFI)
+                    : new Intent(Settings.ACTION_WIFI_SETTINGS);
+            launchIntent(panel.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        });
+        tiles.addView(wifi, tileWeight());
+
+        card.addView(tiles, tilesLp);
+        return card;
+    }
+
+    private LinearLayout quickRow(String avatarText, String title, String subtitle, boolean primary) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(12), dp(10), dp(12), dp(10));
+        row.setBackground(glass(0x1AFFFFFF, 20));
+
+        TextView avatar = new TextView(this);
+        avatar.setText(avatarText);
+        avatar.setTextSize(14f);
+        avatar.setTypeface(Typeface.DEFAULT_BOLD);
+        avatar.setTextColor(Color.WHITE);
+        avatar.setGravity(Gravity.CENTER);
+        GradientDrawable ag = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{0xFF7C4DFF, 0xFF2F6BFF});
+        ag.setShape(GradientDrawable.OVAL);
+        avatar.setBackground(ag);
+        row.addView(avatar, new LinearLayout.LayoutParams(dp(34), dp(34)));
+
+        LinearLayout texts = new LinearLayout(this);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams textsLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        textsLp.leftMargin = dp(12);
+
+        TextView t = new TextView(this);
+        t.setText(title);
+        t.setTextSize(14f);
+        t.setTextColor(Color.WHITE);
+        t.setTypeface(Typeface.DEFAULT_BOLD);
+        texts.addView(t);
+
+        TextView s = new TextView(this);
+        s.setText(subtitle);
+        s.setTextSize(11f);
+        s.setTextColor(0x99FFFFFF);
+        texts.addView(s);
+
+        row.addView(texts, textsLp);
+        return row;
+    }
+
+    private LinearLayout quickTile(String glyph, String label, String sub) {
+        LinearLayout tile = new LinearLayout(this);
+        tile.setOrientation(LinearLayout.VERTICAL);
+        tile.setPadding(dp(13), dp(12), dp(13), dp(12));
+        tile.setBackground(glass(0x14FFFFFF, 20));
+
+        TextView g = new TextView(this);
+        g.setText(glyph);
+        g.setTextSize(18f);
+        tile.addView(g);
+
+        TextView l = new TextView(this);
+        l.setText(label);
+        l.setTextSize(12f);
+        l.setTextColor(Color.WHITE);
+        l.setTypeface(Typeface.DEFAULT_BOLD);
+        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        llp.topMargin = dp(8);
+        tile.addView(l, llp);
+
+        TextView s = new TextView(this);
+        s.setText(sub);
+        s.setTextSize(10.5f);
+        s.setTextColor(0x99FFFFFF);
+        tile.addView(s);
+        return tile;
+    }
+
+    private LinearLayout.LayoutParams tileWeight() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        lp.rightMargin = dp(8);
+        return lp;
+    }
+
+    // ------------------------------------------------------------------
+    // Data
+    // ------------------------------------------------------------------
+
+    private void loadApps() {
+        PackageManager pm = getPackageManager();
+        Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        List<ResolveInfo> found = new ArrayList<>();
+        for (ResolveInfo info : pm.queryIntentActivities(main, 0)) {
+            if (info.activityInfo == null) continue;
+            if (getPackageName().equals(info.activityInfo.packageName)) continue;
+            if (hidden.contains(info.activityInfo.packageName)) continue;
+            found.add(info);
+        }
+        Collections.sort(found, new Comparator<ResolveInfo>() {
+            @Override public int compare(ResolveInfo a, ResolveInfo b) {
+                return a.loadLabel(getPackageManager()).toString()
+                        .compareToIgnoreCase(b.loadLabel(getPackageManager()).toString());
+            }
+        });
+
+        pageApps0.clear();
+        pageApps1.clear();
+        for (int i = 0; i < found.size(); i++) {
+            ResolveInfo info = found.get(i);
+            AppEntry entry = new AppEntry();
+            entry.label = info.loadLabel(pm).toString();
+            entry.pkg = info.activityInfo.packageName;
+            entry.icon = info.loadIcon(pm);
+            entry.launch = new Intent(Intent.ACTION_MAIN)
+                    .addCategory(Intent.CATEGORY_LAUNCHER)
+                    .setComponent(new ComponentName(entry.pkg, info.activityInfo.name))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (i < PAGE_ONE_COUNT) pageApps0.add(entry);
+            else pageApps1.add(entry);
+        }
+        if (adapter0 != null) adapter0.notifyDataSetChanged();
+        if (adapter1 != null) adapter1.notifyDataSetChanged();
+    }
+
+    private void launchIntent(Intent intent) {
+        if (jiggle) { exitJiggle(); return; }
+        try {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+        } catch (Exception e) {
+            try {
+                startActivity(Intent.createChooser(intent, null)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (Exception ignored) { }
+        }
+    }
+
+    private Intent dialIntent() {
+        return new Intent(Intent.ACTION_DIAL, Uri.parse("tel:+33600000000"));
+    }
+
+    private Intent smsIntent() {
+        return new Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:"));
+    }
+
+    private Intent webIntent() {
+        return new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Logane228/dynamic-island"));
+    }
+
+    // ------------------------------------------------------------------
+    // Jiggle editing
+    // ------------------------------------------------------------------
+
+    private void enterJiggle() {
+        if (jiggle) return;
+        jiggle = true;
+        if (adapter0 != null) adapter0.notifyDataSetChanged();
+        if (adapter1 != null) adapter1.notifyDataSetChanged();
+        shake(grid0);
+        shake(grid1);
+    }
+
+    private void exitJiggle() {
+        if (!jiggle) return;
+        jiggle = false;
+        stopShake(grid0);
+        stopShake(grid1);
+        if (adapter0 != null) adapter0.notifyDataSetChanged();
+        if (adapter1 != null) adapter1.notifyDataSetChanged();
+    }
+
+    private void shake(GridView grid) {
+        if (grid == null) return;
+        for (int i = 0; i < grid.getChildCount(); i++) {
+            View child = grid.getChildAt(i);
+            android.animation.ObjectAnimator anim = android.animation.ObjectAnimator
+                    .ofFloat(child, "rotation", -1.2f, 1.2f);
+            anim.setDuration(150 + (i % 4) * 15);
+            anim.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+            anim.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+            anim.start();
+            child.setTag(R.id.island_shake_tag, anim);
+        }
+    }
+
+    private void stopShake(GridView grid) {
+        if (grid == null) return;
+        for (int i = 0; i < grid.getChildCount(); i++) {
+            View child = grid.getChildAt(i);
+            Object tag = child.getTag(R.id.island_shake_tag);
+            if (tag instanceof android.animation.ObjectAnimator) {
+                ((android.animation.ObjectAnimator) tag).cancel();
+            }
+            child.setRotation(0f);
+        }
+    }
+
+    private void hideApp(AppEntry entry) {
+        hidden.add(entry.pkg);
+        prefs().edit().putStringSet("hiddenApps", new HashSet<>(hidden)).apply();
+        pageApps0.remove(entry);
+        pageApps1.remove(entry);
+        if (adapter0 != null) adapter0.notifyDataSetChanged();
+        if (adapter1 != null) adapter1.notifyDataSetChanged();
+    }
+
+    // ------------------------------------------------------------------
+    // Helpers
+    // ------------------------------------------------------------------
 
     private void updateClock() {
         Date now = new Date();
@@ -90,233 +561,131 @@ public class LauncherActivity extends Activity {
         date.setText(new SimpleDateFormat("EEEE d MMMM", Locale.getDefault()).format(now));
     }
 
-    private void buildUi() {
-        FrameLayout root = new FrameLayout(this);
-        GradientDrawable bg = new GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{0xFF0B0D14, 0xFF05060B});
-        root.setBackground(bg);
-
-        LinearLayout column = new LinearLayout(this);
-        column.setOrientation(LinearLayout.VERTICAL);
-        column.setPadding(dp(22), dp(46), dp(22), dp(18));
-
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.BOTTOM);
-
-        LinearLayout times = new LinearLayout(this);
-        times.setOrientation(LinearLayout.VERTICAL);
-
-        clock = new TextView(this);
-        clock.setTextColor(Color.WHITE);
-        clock.setTextSize(52f);
-        clock.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-        clock.setIncludeFontPadding(false);
-        times.addView(clock);
-
-        date = new TextView(this);
-        date.setTextColor(0xFF9AA1B2);
-        date.setTextSize(13f);
-        times.addView(date);
-
-        header.addView(times, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        defaultChip = new TextView(this);
-        defaultChip.setText("Set as home");
-        defaultChip.setTextSize(11.5f);
-        defaultChip.setTextColor(0xFFFFFFFF);
-        defaultChip.setPadding(dp(14), dp(8), dp(14), dp(8));
-        GradientDrawable chipBg = new GradientDrawable();
-        chipBg.setColor(0x22FFFFFF);
-        chipBg.setCornerRadius(dp(18));
-        defaultChip.setBackground(chipBg);
-        defaultChip.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { requestHomeRole(); }
-        });
-        header.addView(defaultChip);
-
-        column.addView(header);
-
-        GridView grid = new GridView(this);
-        grid.setNumColumns(4);
-        grid.setVerticalSpacing(dp(16));
-        grid.setHorizontalSpacing(dp(2));
-        grid.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);
-        grid.setSelector(new android.graphics.drawable.ColorDrawable(0x00000000));
-        grid.setClipToPadding(false);
-        grid.setPadding(0, dp(34), 0, dp(16));
-        grid.setAdapter(new AppAdapter());
-        grid.setOnItemClickListener(new android.widget.AdapterView.OnItemClickListener() {
-            @Override public void onItemClick(android.widget.AdapterView<?> parent, View view, int position, long id) {
-                launch(apps.get(position));
-            }
-        });
-        grid.setOnItemLongClickListener(new android.widget.AdapterView.OnItemLongClickListener() {
-            @Override public boolean onItemLongClick(android.widget.AdapterView<?> parent, View view, int position, long id) {
-                openInfo(apps.get(position));
-                return true;
-            }
-        });
-
-        LinearLayout.LayoutParams glp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
-        column.addView(grid, glp);
-
-        TextView settings = new TextView(this);
-        settings.setText("Island settings");
-        settings.setTextSize(12f);
-        settings.setTextColor(0xFF8E96A8);
-        settings.setGravity(Gravity.CENTER);
-        settings.setPadding(0, dp(10), 0, dp(6));
-        settings.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                Intent i = new Intent(LauncherActivity.this, MainActivity.class);
-                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(i);
-            }
-        });
-        column.addView(settings);
-
-        root.addView(column, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-        setContentView(root);
-    }
-
-    private void loadApps() {
-        PackageManager pm = getPackageManager();
-        Intent main = new Intent(Intent.ACTION_MAIN);
-        main.addCategory(Intent.CATEGORY_LAUNCHER);
-
-        List<ResolveInfo> found = pm.queryIntentActivities(main, 0);
-        List<ResolveInfo> filtered = new ArrayList<>();
-        for (ResolveInfo info : found) {
-            if (info.activityInfo == null) continue;
-            if (getPackageName().equals(info.activityInfo.packageName)
-                    && info.activityInfo.name.endsWith("LauncherActivity")) continue;
-            filtered.add(info);
-        }
-        Collections.sort(filtered, new Comparator<ResolveInfo>() {
-            @Override public int compare(ResolveInfo a, ResolveInfo b) {
-                String la = a.loadLabel(getPackageManager()).toString();
-                String lb = b.loadLabel(getPackageManager()).toString();
-                return la.compareToIgnoreCase(lb);
-            }
-        });
-        apps = filtered;
-    }
-
-    private void launch(ResolveInfo info) {
-        try {
-            Intent intent = getPackageManager().getLaunchIntentForPackage(info.activityInfo.packageName);
-            if (intent == null) {
-                intent = new Intent(Intent.ACTION_MAIN);
-                intent.addCategory(Intent.CATEGORY_LAUNCHER);
-                intent.setComponent(new android.content.ComponentName(
-                        info.activityInfo.packageName, info.activityInfo.name));
-            }
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(intent);
-        } catch (Exception ignored) { }
-    }
-
-    private void openInfo(ResolveInfo info) {
-        try {
-            Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
-            i.setData(Uri.fromParts("package", info.activityInfo.packageName, null));
-            startActivity(i);
-        } catch (Exception ignored) { }
-    }
-
-    private void requestHomeRole() {
-        try {
-            if (Build.VERSION.SDK_INT >= 29) {
-                RoleManager rm = getSystemService(RoleManager.class);
-                if (rm != null && rm.isRoleAvailable(RoleManager.ROLE_HOME)) {
-                    startActivity(rm.createRequestRoleIntent(RoleManager.ROLE_HOME));
-                    return;
-                }
-            }
-            startActivity(new Intent(Settings.ACTION_HOME_SETTINGS));
-        } catch (Exception ignored) { }
-    }
-
-    private boolean isDefaultHome() {
-        try {
-            if (Build.VERSION.SDK_INT >= 29) {
-                RoleManager rm = getSystemService(RoleManager.class);
-                if (rm != null && rm.isRoleAvailable(RoleManager.ROLE_HOME)) {
-                    return rm.isRoleHeld(RoleManager.ROLE_HOME);
-                }
-            }
-            Intent home = new Intent(Intent.ACTION_MAIN);
-            home.addCategory(Intent.CATEGORY_HOME);
-            ResolveInfo ri = getPackageManager().resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY);
-            return ri != null && getPackageName().equals(ri.activityInfo.packageName);
-        } catch (Exception e) {
-            return false;
+    private void updateDots(int page) {
+        for (int i = 0; i < dots.getChildCount(); i++) {
+            dots.getChildAt(i).setAlpha(i == page ? 1f : 0.35f);
         }
     }
 
-    private void updateDefaultChip() {
-        if (defaultChip == null) return;
-        defaultChip.setVisibility(isDefaultHome() ? View.GONE : View.VISIBLE);
+    private void toggleTint() {
+        tinted = !tinted;
+        wallpaper.setTinted(tinted);
+        if (adapter0 != null) adapter0.notifyDataSetChanged();
+        if (adapter1 != null) adapter1.notifyDataSetChanged();
+    }
+
+    private GradientDrawable glass(int fill, int radiusDp) {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(fill);
+        g.setCornerRadius(dp(radiusDp));
+        g.setStroke(Math.max(1, dp(0.7f)), 0x38FFFFFF);
+        return g;
+    }
+
+    private FrameLayout.LayoutParams match() {
+        return new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
     }
 
     private int dp(float value) {
-        return (int) (value * getResources().getDisplayMetrics().density);
+        return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value,
+                getResources().getDisplayMetrics());
     }
 
+    private static class AppEntry {
+        String label;
+        String pkg;
+        Drawable icon;
+        Intent launch;
+    }
+
+    // ------------------------------------------------------------------
+    // Grid adapter
+    // ------------------------------------------------------------------
+
     private class AppAdapter extends BaseAdapter {
-        @Override public int getCount() { return apps.size(); }
-        @Override public Object getItem(int position) { return apps.get(position); }
+        private final List<AppEntry> entries;
+
+        AppAdapter(List<AppEntry> entries) {
+            this.entries = entries;
+        }
+
+        AppEntry getItemEntry(int position) {
+            return entries.get(position);
+        }
+
+        @Override public int getCount() { return entries.size(); }
+        @Override public Object getItem(int position) { return entries.get(position); }
         @Override public long getItemId(int position) { return position; }
 
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
-            LinearLayout item;
+            FrameLayout cell;
             ImageView icon;
             TextView label;
+            TextView badge;
 
             if (convertView == null) {
-                item = new LinearLayout(LauncherActivity.this);
-                item.setOrientation(LinearLayout.VERTICAL);
-                item.setGravity(Gravity.CENTER_HORIZONTAL);
+                cell = new FrameLayout(LauncherActivity.this);
+                LinearLayout box = new LinearLayout(LauncherActivity.this);
+                box.setOrientation(LinearLayout.VERTICAL);
+                box.setGravity(Gravity.CENTER_HORIZONTAL);
 
                 icon = new ImageView(LauncherActivity.this);
-                item.addView(icon, new LinearLayout.LayoutParams(dp(50), dp(50)));
+                box.addView(icon, new LinearLayout.LayoutParams(dp(56), dp(56)));
 
                 label = new TextView(LauncherActivity.this);
-                label.setTextColor(0xFFE4E8F2);
-                label.setTextSize(11.5f);
+                label.setTextSize(11f);
+                label.setTextColor(0xFFE8EBF4);
                 label.setGravity(Gravity.CENTER);
                 label.setMaxLines(1);
                 label.setEllipsize(android.text.TextUtils.TruncateAt.END);
                 LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                 llp.topMargin = dp(6);
-                item.addView(label, llp);
+                box.addView(label, llp);
 
-                item.setTag(new View[]{icon, label});
+                cell.addView(box, new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+                badge = new TextView(LauncherActivity.this);
+                badge.setText("−");
+                badge.setTextSize(15f);
+                badge.setTextColor(Color.WHITE);
+                badge.setGravity(Gravity.CENTER);
+                GradientDrawable bg = new GradientDrawable();
+                bg.setShape(GradientDrawable.OVAL);
+                bg.setColor(0xE61C1C20);
+                bg.setStroke(dp(1), 0x66FFFFFF);
+                badge.setBackground(bg);
+                FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(dp(22), dp(22));
+                blp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+                blp.leftMargin = dp(18);
+                cell.addView(badge, blp);
+
+                cell.setTag(new Object[]{icon, label, badge});
             } else {
-                item = (LinearLayout) convertView;
-                View[] views = (View[]) item.getTag();
-                icon = (ImageView) views[0];
-                label = (TextView) views[1];
+                cell = (FrameLayout) convertView;
+                Object[] refs = (Object[]) cell.getTag();
+                icon = (ImageView) refs[0];
+                label = (TextView) refs[1];
+                badge = (TextView) refs[2];
             }
 
-            ResolveInfo info = apps.get(position);
-            String pkg = info.activityInfo.packageName;
-            Drawable cached = iconCache.get(pkg);
-            if (cached == null) {
-                cached = info.loadIcon(getPackageManager());
-                iconCache.put(pkg, cached);
+            final AppEntry entry = entries.get(position);
+            icon.setImageDrawable(entry.icon);
+            if (tinted) {
+                ColorMatrix cm = new ColorMatrix();
+                cm.setSaturation(0.08f);
+                icon.setColorFilter(new ColorMatrixColorFilter(cm));
+            } else {
+                icon.clearColorFilter();
             }
-            icon.setImageDrawable(cached);
-            label.setText(info.loadLabel(getPackageManager()));
-            return item;
+            label.setText(entry.label);
+
+            badge.setVisibility(jiggle ? View.VISIBLE : View.GONE);
+            badge.setOnClickListener(v -> hideApp(entry));
+            return cell;
         }
     }
 }

@@ -348,7 +348,7 @@ public class MainActivity extends Activity {
 
         TextView foot = new TextView(this);
         foot.setText("Unlock the position to drag the pill; locked it stays around the camera. Tap to expand it; "
-                + "long-press to come back here. Music appears by itself while something is playing.\n\nv4.5");
+                + "long-press to come back here. Music appears by itself while something is playing.\n\nv4.7");
         foot.setTextSize(11.5f);
         foot.setTextColor(0xFF6C7080);
         foot.setLineSpacing(dp(3), 1f);
