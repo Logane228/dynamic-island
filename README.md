@@ -38,6 +38,9 @@ started from, and the iOS/ActivityKit specs written along the way.
 - Secondary bubble for the next activity, tap to swap it into focus.
 - In-app call screen reached from the expanded card.
 - Position lock, presets, Material You accent colours.
+- Charging animation with a **liquid orb**: dark glass sphere, three iridescent
+  Siri-wave bands, rim light and specular, percentage inside — plays when the
+  charger is plugged in (Canvas approximation of the Metal orb shader).
 - Iridescent "liquid glass" glow around the capsule border — three pastel
   sweep gradients rotating at different speeds, inspired by the Siri-wave orb
   (replaces the flat RGB ring as of 3.8).

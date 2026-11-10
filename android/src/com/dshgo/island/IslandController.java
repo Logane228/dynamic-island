@@ -179,6 +179,7 @@ public class IslandController {
     private ProgressBar chargeBar;
     private ValueAnimator chargeAnim;
     private ObjectAnimator boltPulse;
+    private LiquidOrbView orbPulseView;
     private final Runnable chargeToCompact = new Runnable() {
         @Override public void run() {
             if (mode != CHARGE_BIG) return;
@@ -335,6 +336,7 @@ public class IslandController {
         timerStatus = null;
         chargeBar = null;
         chargePctTv = null;
+        if (orbPulseView != null) { orbPulseView.stop(); orbPulseView = null; }
         idleIcon = null;
         idleText = null;
         dashTime = null;
@@ -392,7 +394,7 @@ public class IslandController {
                 buildChargeCompact();
                 break;
             case CHARGE_BIG:
-                w = dp(286); hgt = dp(124); radius = dp(36);
+                w = dp(300); hgt = dp(200); radius = dp(40);
                 buildChargeBig();
                 break;
             case QUICK:
@@ -489,36 +491,38 @@ public class IslandController {
         col.setOrientation(LinearLayout.VERTICAL);
         col.setGravity(Gravity.CENTER_HORIZONTAL);
 
-        ImageView bolt = new ImageView(ctx);
-        bolt.setImageResource(R.drawable.ic_bolt);
-        bolt.setLayoutParams(new LinearLayout.LayoutParams(dp(30), dp(30)));
-        col.addView(bolt);
+        FrameLayout orbWrap = new FrameLayout(ctx);
+        LiquidOrbView orb = new LiquidOrbView(ctx);
+        orbWrap.addView(orb, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        chargePctTv = tv("0%", 22f, 0xFFFFFFFF, true);
+        chargePctTv.setFontFeatureSettings("tnum");
+        chargePctTv.setShadowLayer(dp(6), 0, 0, 0xAA000000);
+        FrameLayout.LayoutParams pctLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        pctLp.gravity = Gravity.CENTER;
+        orbWrap.addView(chargePctTv, pctLp);
+        LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(dp(116), dp(116));
+        col.addView(orbWrap, olp);
+        orbPulseView = orb;
 
         TextView label = tv("Charging", 11f, 0x99FFFFFF, false);
-        label.setPadding(0, dp(3), 0, 0);
-        col.addView(label);
-
-        chargePctTv = tv("0%", 26f, 0xFFFFFFFF, true);
-        chargePctTv.setFontFeatureSettings("tnum");
-        col.addView(chargePctTv);
+        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        llp.topMargin = dp(6);
+        col.addView(label, llp);
 
         chargeBar = new ProgressBar(ctx, null, android.R.attr.progressBarStyleHorizontal);
         chargeBar.setMax(100);
-        chargeBar.setProgressTintList(ColorStateList.valueOf(0xFF30D158));
+        chargeBar.setProgressTintList(ColorStateList.valueOf(accent()));
         chargeBar.setProgressBackgroundTintList(ColorStateList.valueOf(0x33FFFFFF));
         LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(150), dp(4));
-        bp.topMargin = dp(5);
+        bp.topMargin = dp(8);
         chargeBar.setLayoutParams(bp);
         col.addView(chargeBar);
 
         expanded.addView(col, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-        boltPulse = ObjectAnimator.ofFloat(bolt, View.ALPHA, 1f, 0.42f);
-        boltPulse.setDuration(820);
-        boltPulse.setRepeatCount(ValueAnimator.INFINITE);
-        boltPulse.setRepeatMode(ValueAnimator.REVERSE);
-        boltPulse.start();
 
         final int target = Math.max(1, Math.min(100, pct));
         chargeAnim = ValueAnimator.ofInt(0, target);
@@ -2048,7 +2052,7 @@ public class IslandController {
         h.removeCallbacks(chargeToCompact);
         h.removeCallbacks(chargeHide);
         applyMode(CHARGE_BIG, false);
-        h.postDelayed(chargeToCompact, 2600);
+        h.postDelayed(chargeToCompact, 3200);
     }
 
     private void cancelChargeAnims() {
