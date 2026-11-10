@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Island</string>
+    <string name="a11y_desc">Lets the island sit around the front camera and still receive taps there.</string>
+</resources>

@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<meta name="theme-color" content="#07070f" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>Dynamic Island</title>
+<style>
+  :root{
+    --spring: cubic-bezier(.34, 1.5, .5, 1);
+    --ease: cubic-bezier(.22,.61,.36,1);
+    --ink: #fff;
+    --ink-2: rgba(255,255,255,.58);
+    --ink-3: rgba(255,255,255,.34);
+    --red: #ff453a;
+    --green: #30d158;
+    --blue: #0a84ff;
+  }
+  *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body{ height: 100%; margin: 0; }
+  body{
+    background: #06060c;
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", "Noto Sans SC", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* ---------- wallpaper ---------- */
+  .wall{ position: fixed; inset: 0; overflow: hidden; }
+  .wall::before{
+    content:""; position:absolute; inset:-20%;
+    background:
+      radial-gradient(46% 32% at 22% 4%, rgba(110,72,255,.55), transparent 70%),
+      radial-gradient(40% 30% at 92% 10%, rgba(0,150,199,.42), transparent 70%),
+      radial-gradient(50% 40% at 50% 108%, rgba(255,64,129,.34), transparent 72%),
+      linear-gradient(180deg, #0a0a18 0%, #08080f 55%, #05050a 100%);
+    filter: saturate(1.05);
+  }
+  .wall::after{
+    content:""; position:absolute; inset:0;
+    background-image: radial-gradient(rgba(255,255,255,.16) .5px, transparent .5px);
+    background-size: 3px 3px;
+    opacity:.05; mix-blend-mode: overlay;
+  }
+
+  /* ---------- status bar ---------- */
+  .statusbar{
+    position: fixed; z-index: 40; top: 0; left: 0; right: 0;
+    height: calc(48px + env(safe-area-inset-top, 0px));
+    padding: env(safe-area-inset-top, 0px) 16px 0;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 15px; font-weight: 600; letter-spacing: .2px;
+    pointer-events: none;
+    transition: opacity .25s ease, transform .35s var(--ease);
+  }
+  body.is-expanded .statusbar{ opacity: 0; transform: translateY(-3px); }
+  .sicons{ display:flex; align-items:center; gap:6px; opacity:.95; }
+
+  /* ---------- island ---------- */
+  .island{
+    position: fixed; z-index: 60;
+    top: calc(10px + env(safe-area-inset-top, 0px));
+    left: 50%; transform: translateX(-50%);
+    width: 126px; height: 36px;
+    background: #000;
+    border-radius: 18px;
+    overflow: hidden;
+    cursor: pointer;
+    will-change: width, height, border-radius;
+    transition:
+      width .5s var(--spring),
+      height .5s var(--spring),
+      border-radius .5s var(--spring);
+    box-shadow:
+      0 12px 34px rgba(0,0,0,.62),
+      0 1px 0 rgba(255,255,255,.06) inset,
+      0 0 0 .5px rgba(255,255,255,.10);
+  }
+  .island:focus-visible{ outline: 2px solid rgba(10,132,255,.75); outline-offset: 3px; }
+
+  .island[data-state="music-mini"]{ width: 238px; }
+  .island[data-state="music"]{ width: min(92vw, 362px); height: 168px; border-radius: 42px; }
+  .island[data-state="timer-mini"]{ width: 192px; }
+  .island[data-state="timer"]{ width: min(92vw, 334px); height: 100px; border-radius: 46px; }
+  .island[data-state="call"]{ width: min(92vw, 348px); height: 104px; border-radius: 48px; }
+  .island[data-state="call-active"]{ width: 216px; }
+  .island[data-state="charge"]{ width: 220px; }
+  .island[data-state="notify"]{ width: min(92vw, 348px); height: 88px; border-radius: 40px; }
+
+  /* camera pinhole */
+  .cam{
+    position: absolute; z-index: 3; top: 50%; right: 13px;
+    width: 11px; height: 11px; margin-top: -5.5px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 32%, #2b3350 0%, #0a0d18 55%, #000 100%);
+    box-shadow: 0 0 0 .5px rgba(80,110,180,.28) inset;
+    transition: opacity .2s ease, transform .4s var(--ease);
+  }
+  .island:not([data-state="idle"]) .cam{ opacity: 0; }
+
+  /* views */
+  .view{
+    position: absolute; inset: 0;
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 14px;
+    opacity: 0; pointer-events: none; visibility: hidden;
+    transform: scale(.94);
+    transition: opacity .18s ease, transform .42s var(--spring), visibility 0s linear .2s;
+  }
+  .view.on{
+    opacity: 1; pointer-events: auto; visibility: visible; transform: none;
+    transition: opacity .18s ease, transform .42s var(--spring), visibility 0s;
+  }
+  .island[data-state="idle"] .v-idle{ opacity: 1; }
+
+  .v-music, .v-timer, .v-call, .v-notify{ padding: 14px 18px; }
+
+  /* ---------- music mini ---------- */
+  .mini-art{
+    width: 24px; height: 24px; border-radius: 7px; flex: none;
+    background:
+      radial-gradient(circle at 30% 25%, #ffd8f2, transparent 45%),
+      linear-gradient(140deg, #7b3cff, #ff2f7b 60%, #ff9b3d);
+    box-shadow: 0 0 12px rgba(255,60,140,.35);
+  }
+  .mini-body{ min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+  .mini-title{
+    font-size: 12.5px; font-weight: 600; letter-spacing: .1px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .mini-sub{ font-size: 10.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* equalizer */
+  .eq{ display: flex; align-items: flex-end; gap: 2.5px; height: 15px; flex: none; }
+  .eq i{
+    display:block; width: 3px; border-radius: 2px; height: 100%;
+    background: linear-gradient(180deg, #ff5fa2, #a06bff);
+    transform-origin: bottom;
+    animation: eq 1s ease-in-out infinite;
+  }
+  .eq i:nth-child(1){ animation-delay: -.9s; height: 45%; }
+  .eq i:nth-child(2){ animation-delay: -.6s; height: 100%; }
+  .eq i:nth-child(3){ animation-delay: -.25s; height: 65%; }
+  .eq i:nth-child(4){ animation-delay: -.75s; height: 85%; }
+  .eq.paused i{ animation-play-state: paused; opacity: .45; }
+  @keyframes eq{ 0%,100%{ transform: scaleY(.35) } 50%{ transform: scaleY(1) } }
+
+  /* ---------- music expanded ---------- */
+  .v-music{ flex-direction: column; align-items: stretch; gap: 8px; }
+  .m-top{ display: flex; gap: 13px; align-items: center; min-width: 0; }
+  .m-art{
+    width: 74px; height: 74px; border-radius: 16px; flex: none;
+    background:
+      radial-gradient(circle at 50% 50%, rgba(255,255,255,.32) 0 8%, transparent 9%),
+      radial-gradient(circle at 50% 50%, rgba(255,255,255,.14) 0 22%, transparent 23%),
+      radial-gradient(circle at 28% 22%, #ffd8f2, transparent 46%),
+      linear-gradient(140deg, #6a2bff, #ff2f7b 62%, #ff9b3d);
+    box-shadow: 0 8px 22px rgba(255,45,120,.25), 0 0 0 .5px rgba(255,255,255,.14) inset;
+  }
+  .m-info{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .m-title{ font-size: 15px; font-weight: 650; letter-spacing: .1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .m-artist{ font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar{
+    position: relative; height: 4px; margin-top: 7px;
+    background: rgba(255,255,255,.16); border-radius: 99px; overflow: visible;
+  }
+  .bar-fill{
+    position: absolute; inset: 0 auto 0 0; width: 21%;
+    border-radius: 99px; background: linear-gradient(90deg, #b06bff, #ff5fa2);
+    transition: width .2s linear;
+  }
+  .bar-dot{
+    position: absolute; top: 50%; left: 21%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px;
+    background: #fff; border-radius: 50%; box-shadow: 0 0 8px rgba(255,255,255,.5);
+    transition: left .2s linear;
+  }
+  .m-times{ display: flex; justify-content: space-between; font-size: 10px; color: var(--ink-3); margin-top: 5px; font-variant-numeric: tabular-nums; }
+
+  .controls{ display: flex; align-items: center; justify-content: center; gap: 26px; margin-top: auto; }
+  .ctrl{
+    appearance: none; border: 0; background: none; color: var(--ink);
+    width: 34px; height: 34px; display: grid; place-items: center;
+    cursor: pointer; border-radius: 50%; padding: 0;
+    transition: transform .18s var(--spring), background .18s ease;
+  }
+  .ctrl:active{ transform: scale(.86); background: rgba(255,255,255,.1); }
+  .ctrl.play{
+    width: 44px; height: 44px; background: rgba(255,255,255,.10);
+    box-shadow: 0 0 0 .5px rgba(255,255,255,.12) inset;
+  }
+  .ctrl.play:active{ transform: scale(.9); }
+  .ctrl svg{ width: 24px; height: 24px; fill: currentColor; }
+  .ctrl.play svg{ width: 20px; height: 20px; }
+  .ctrl .i-pause{ display: none; }
+  .ctrl[data-playing="true"] .i-pause{ display: block; }
+  .ctrl[data-playing="true"] .i-play{ display: none; }
+
+  /* ---------- timer ---------- */
+  .v-timer{ gap: 12px; }
+  .ring-wrap{ position: relative; width: 62px; height: 62px; flex: none; }
+  .ring{ width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring circle{ fill: none; stroke-width: 4; }
+  .ring .track{ stroke: rgba(255,255,255,.14); }
+  .ring .prog{
+    stroke: #ffb340; stroke-linecap: round;
+    stroke-dasharray: 125.66; stroke-dashoffset: 0;
+    filter: drop-shadow(0 0 5px rgba(255,170,60,.5));
+    transition: stroke-dashoffset .4s linear;
+  }
+  .ring-label{
+    position: absolute; inset: 0; display: grid; place-items: center;
+    font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -.2px;
+  }
+  .t-body{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .t-title{ font-size: 14.5px; font-weight: 650; }
+  .t-sub{ font-size: 11.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .t-actions{ display: flex; gap: 8px; flex: none; }
+  .round{
+    appearance: none; border: 0; padding: 0; cursor: pointer;
+    width: 36px; height: 36px; border-radius: 50%;
+    display: grid; place-items: center; color: #fff;
+    background: rgba(255,255,255,.14); transition: transform .18s var(--spring);
+  }
+  .round:active{ transform: scale(.88); }
+  .round svg{ width: 16px; height: 16px; fill: currentColor; }
+
+  /* timer mini */
+  .v-timer-mini{ gap: 9px; }
+  .v-timer-mini .ring-wrap{ width: 26px; height: 26px; }
+  .v-timer-mini .ring circle{ stroke-width: 5; }
+  .v-timer-mini .ring-label{ font-size: 0; }
+  .mini-time{ font-size: 12.5px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .mini-tag{ font-size: 10.5px; color: var(--ink-2); }
+
+  /* ---------- call ---------- */
+  .v-call{ gap: 12px; }
+  .avatar-wrap{ position: relative; width: 54px; height: 54px; flex: none; }
+  .avatar{
+    position: absolute; inset: 0; border-radius: 50%;
+    display: grid; place-items: center;
+    font-size: 21px; font-weight: 600; color: #fff;
+    background: linear-gradient(140deg, #4f8cff, #7a4dff);
+    box-shadow: 0 0 0 .5px rgba(255,255,255,.2) inset;
+  }
+  .avatar-wrap::after{
+    content:""; position: absolute; inset: -4px; border-radius: 50%;
+    border: 2px solid rgba(122,199,255,.55);
+    animation: halo 1.8s ease-out infinite;
+  }
+  @keyframes halo{ 0%{ transform: scale(.9); opacity: .9 } 100%{ transform: scale(1.3); opacity: 0 } }
+  .c-body{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .c-name{ font-size: 15px; font-weight: 650; }
+  .c-sub{ font-size: 11.5px; color: var(--ink-2); display: flex; align-items: center; gap: 5px; }
+  .dot-live{ width: 5px; height: 5px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .c-actions{ display: flex; gap: 10px; flex: none; }
+  .round.big{ width: 42px; height: 42px; }
+  .round.decline{ background: var(--red); }
+  .round.accept{ background: var(--green); }
+  .round svg{ width: 19px; height: 19px; }
+
+  /* call active mini */
+  .v-call-active{ gap: 9px; }
+  .pulse-dot{ width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: blink 1.6s ease-in-out infinite; flex: none; }
+  @keyframes blink{ 0%,100%{ opacity: 1 } 50%{ opacity: .35 } }
+  .ca-name{ font-size: 12.5px; font-weight: 600; }
+  .ca-time{ font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; margin-left: auto; }
+
+  /* ---------- charge ---------- */
+  .v-charge{ gap: 9px; }
+  .bolt{
+    width: 22px; height: 22px; border-radius: 50%; flex: none;
+    display: grid; place-items: center;
+    background: rgba(255,214,10,.16); color: #ffd60a;
+    animation: bolt 2.2s ease-in-out infinite;
+  }
+  .bolt svg{ width: 13px; height: 13px; fill: currentColor; }
+  @keyframes bolt{ 0%,100%{ box-shadow: 0 0 0 0 rgba(255,214,10,.35) } 50%{ box-shadow: 0 0 0 6px rgba(255,214,10,0) } }
+  .chg-text{ font-size: 12.5px; font-weight: 600; }
+  .chg-pct{ font-size: 12px; color: var(--ink-2); margin-left: auto; font-variant-numeric: tabular-nums; }
+  .batt{ width: 24px; height: 12px; border-radius: 3.5px; border: 1.2px solid rgba(255,255,255,.5); position: relative; padding: 1.6px; flex: none; }
+  .batt::after{ content:""; position: absolute; right: -3.5px; top: 50%; width: 2px; height: 4.5px; margin-top: -2.25px; border-radius: 0 1px 1px 0; background: rgba(255,255,255,.5); }
+  .batt i{ display: block; height: 100%; width: 32%; border-radius: 1.5px; background: var(--green); transition: width .6s ease; }
+
+  /* ---------- notification ---------- */
+  .v-notify{ gap: 11px; }
+  .app-icon{
+    width: 40px; height: 40px; border-radius: 11px; flex: none;
+    display: grid; place-items: center; color: #fff;
+    background: linear-gradient(150deg, #ff7a45, #ff2d55);
+    box-shadow: 0 4px 14px rgba(255,45,85,.35);
+  }
+  .n-body{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .n-top{ display: flex; align-items: baseline; gap: 8px; }
+  .n-app{ font-size: 11px; color: var(--ink-2); letter-spacing: .2px; text-transform: uppercase; }
+  .n-when{ font-size: 10.5px; color: var(--ink-3); margin-left: auto; }
+  .n-title{ font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .n-text{ font-size: 11.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---------- demo stage ---------- */
+  .stage{
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+    padding: 20px 18px calc(22px + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(180deg, transparent, rgba(4,4,10,.72) 38%);
+  }
+  .stage h1{
+    margin: 0 0 4px; font-size: 21px; letter-spacing: -.4px; font-weight: 700;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .stage h1 span{
+    font-size: 10px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase;
+    color: #0b0b12; background: linear-gradient(90deg,#ffd60a,#ff9f0a);
+    padding: 3px 6px; border-radius: 5px;
+  }
+  .sub{ margin: 0 0 16px; font-size: 12.5px; color: var(--ink-2); }
+  .grid{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .trig{
+    appearance: none; border: 0; cursor: pointer;
+    padding: 11px 6px; border-radius: 13px;
+    font: inherit; font-size: 12.5px; font-weight: 600; color: #fff;
+    background: rgba(255,255,255,.075);
+    box-shadow: 0 0 0 .5px rgba(255,255,255,.10) inset, 0 6px 18px rgba(0,0,0,.25);
+    transition: transform .16s var(--spring), background .16s ease;
+  }
+  .trig:active{ transform: scale(.95); background: rgba(255,255,255,.14); }
+  .trig.wide{ grid-column: span 3; background: rgba(255,255,255,.05); color: var(--ink-2); }
+
+  .toast{
+    position: fixed; z-index: 70; left: 50%; bottom: calc(190px + env(safe-area-inset-bottom, 0px));
+    transform: translate(-50%, 10px);
+    padding: 9px 14px; border-radius: 12px;
+    background: rgba(28,28,34,.92); backdrop-filter: blur(10px);
+    font-size: 12.5px; color: #fff;
+    box-shadow: 0 10px 30px rgba(0,0,0,.45), 0 0 0 .5px rgba(255,255,255,.1) inset;
+    opacity: 0; pointer-events: none;
+    transition: opacity .25s ease, transform .25s var(--ease);
+    white-space: nowrap;
+  }
+  .toast.show{ opacity: 1; transform: translate(-50%, 0); }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration: .001ms !important; animation-iteration-count: 1 !important; }
+    .island{ transition-duration: .001ms !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wall"></div>
+
+<div class="statusbar">
+  <span id="clock">9:41</span>
+  <span class="sicons" aria-hidden="true">
+    <svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1" opacity=".35"/></svg>
+    <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"><path d="M1.2 4.2a10 10 0 0 1 13.6 0"/><path d="M3.9 7a6.2 6.2 0 0 1 8.2 0"/><circle cx="8" cy="10" r="1.1" fill="#fff" stroke="none"/></svg>
+    <svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x=".6" y=".6" width="22" height="10.8" rx="3" stroke="#fff" stroke-opacity=".55"/><rect x="2.2" y="2.2" width="15.5" height="7.6" rx="1.8" fill="#fff"/><path d="M24.4 4.2v3.6c.9-.3 1.4-1 1.4-1.8s-.5-1.5-1.4-1.8z" fill="#fff" fill-opacity=".55"/></svg>
+  </span>
+</div>
+
+<div class="island" id="island" data-state="idle" role="group" tabindex="0"
+     aria-label="Dynamic Island. Tap to expand.">
+  <span class="cam"></span>
+
+  <div class="view v-idle" aria-hidden="true"></div>
+
+  <!-- music compact -->
+  <div class="view v-music-mini">
+    <span class="mini-art"></span>
+    <span class="mini-body">
+      <span class="mini-title" id="miniTitle">Midnight Drive</span>
+      <span class="mini-sub">Neon Coast</span>
+    </span>
+    <span class="eq" id="eqMini"><i></i><i></i><i></i><i></i></span>
+  </div>
+
+  <!-- music expanded -->
+  <div class="view v-music">
+    <div class="m-top">
+      <div class="m-art"></div>
+      <div class="m-info">
+        <div class="m-title">Midnight Drive</div>
+        <div class="m-artist">Neon Coast</div>
+        <div class="bar"><span class="bar-fill" id="barFill"></span><span class="bar-dot" id="barDot"></span></div>
+        <div class="m-times"><span id="tCur">0:42</span><span>3:18</span></div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="ctrl" id="prevBtn" aria-label="Previous track">
+        <svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14l-11-7z"/></svg>
+      </button>
+      <button class="ctrl play" id="playBtn" data-playing="true" aria-label="Pause">
+        <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10-6.5a1 1 0 0 0 0-1.72l-10-6.5A1 1 0 0 0 8 5.5z"/></svg>
+        <svg class="i-pause" viewBox="0 0 24 24"><path d="M8 5h3v14H8zM13 5h3v14h-3z"/></svg>
+      </button>
+      <button class="ctrl" id="nextBtn" aria-label="Next track">
+        <svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- timer compact -->
+  <div class="view v-timer-mini">
+    <span class="ring-wrap">
+      <svg class="ring" viewBox="0 0 48 48" aria-hidden="true">
+        <circle class="track" cx="24" cy="24" r="20"></circle>
+        <circle class="prog" id="ringMini" cx="24" cy="24" r="20"></circle>
+      </svg>
+    </span>
+    <span class="mini-time" id="timerMiniTime">5:00</span>
+    <span class="mini-tag">Focus</span>
+  </div>
+
+  <!-- timer expanded -->
+  <div class="view v-timer">
+    <div class="ring-wrap">
+      <svg class="ring" viewBox="0 0 48 48" aria-hidden="true">
+        <circle class="track" cx="24" cy="24" r="20"></circle>
+        <circle class="prog" id="ringProg" cx="24" cy="24" r="20"></circle>
+      </svg>
+      <span class="ring-label" id="ringLabel">5:00</span>
+    </div>
+    <div class="t-body">
+      <div class="t-title">Focus Timer</div>
+      <div class="t-sub" id="timerSub">Running · ends at 9:46</div>
+    </div>
+    <div class="t-actions">
+      <button class="round" id="timerPause" aria-label="Pause timer">
+        <svg class="i-tpause" viewBox="0 0 24 24"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+        <svg class="i-tplay" viewBox="0 0 24 24" style="display:none"><path d="M8 5.6v12.8a1 1 0 0 0 1.53.85l9.4-6.4a1 1 0 0 0 0-1.7l-9.4-6.4A1 1 0 0 0 8 5.6z"/></svg>
+      </button>
+      <button class="round" id="timerClose" aria-label="Stop timer">
+        <svg viewBox="0 0 24 24"><path d="M6.4 5 12 10.6 17.6 5 19 6.4 13.4 12 19 17.6 17.6 19 12 13.4 6.4 19 5 17.6 10.6 12 5 6.4z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- incoming call -->
+  <div class="view v-call">
+    <div class="avatar-wrap"><div class="avatar">M</div></div>
+    <div class="c-body">
+      <div class="c-name">Mom</div>
+      <div class="c-sub"><span class="dot-live"></span>incoming call</div>
+    </div>
+    <div class="c-actions">
+      <button class="round big decline" id="declineBtn" aria-label="Decline call">
+        <svg viewBox="0 0 24 24" style="transform:rotate(135deg)"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.4.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.4 21 3 13.6 3 4c0-.6.4-1 1-1h3.4c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.4 0 .8-.3 1z"/></svg>
+      </button>
+      <button class="round big accept" id="acceptBtn" aria-label="Accept call">
+        <svg viewBox="0 0 24 24"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.4.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.4 21 3 13.6 3 4c0-.6.4-1 1-1h3.4c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.4 0 .8-.3 1z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- call connected -->
+  <div class="view v-call-active">
+    <span class="pulse-dot"></span>
+    <span class="ca-name">Mom</span>
+    <span class="ca-time" id="callTime">0:00</span>
+  </div>
+
+  <!-- charging -->
+  <div class="view v-charge">
+    <span class="bolt">
+      <svg viewBox="0 0 24 24"><path d="M13 2 4.5 13.2H11L9.6 22 19 10.2h-6.4z"/></svg>
+    </span>
+    <span class="chg-text">Charging</span>
+    <span class="chg-pct" id="chgPct">32%</span>
+    <span class="batt"><i id="battFill"></i></span>
+  </div>
+
+  <!-- notification -->
+  <div class="view v-notify">
+    <span class="app-icon">
+      <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor" aria-hidden="true"><path d="M5.5 3.5h13A3.5 3.5 0 0 1 22 7v7.5a3.5 3.5 0 0 1-3.5 3.5h-6.2l-4.5 3.4c-.7.5-1.8 0-1.8-.9V18h-.5A3.5 3.5 0 0 1 2 14.5V7a3.5 3.5 0 0 1 3.5-3.5z"/></svg>
+    </span>
+    <span class="n-body">
+      <span class="n-top"><span class="n-app">Messages</span><span class="n-when">now</span></span>
+      <span class="n-title" id="nTitle">Alex</span>
+      <span class="n-text" id="nText">Are we still on for 8?</span>
+    </span>
+  </div>
+</div>
+
+<div class="stage">
+  <h1>Dynamic Island <span>demo</span></h1>
+  <p class="sub">Tap the island to expand. Trigger a live activity:</p>
+  <div class="grid" id="triggers">
+    <button class="trig" data-act="music">Music</button>
+    <button class="trig" data-act="timer">Timer</button>
+    <button class="trig" data-act="call">Call</button>
+    <button class="trig" data-act="charge">Charging</button>
+    <button class="trig" data-act="notify">Message</button>
+    <button class="trig" data-act="reset">Reset</button>
+    <button class="trig wide" data-act="toggle">Toggle expand / collapse</button>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  const island = document.getElementById('island');
+  const toastEl = document.getElementById('toast');
+
+  const state = {
+    name: 'idle',
+    music: { pos: 42, dur: 198, playing: true },
+    timer: { remaining: 300, total: 300, running: true, endAt: null },
+    call: { connectedAt: null },
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const fmt = (s) => {
+    s = Math.max(0, Math.round(s));
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  };
+
+  /* ---------- state transitions ---------- */
+  const VIEW = {
+    idle: 'v-idle',
+    'music-mini': 'v-music-mini',
+    music: 'v-music',
+    'timer-mini': 'v-timer-mini',
+    timer: 'v-timer',
+    call: 'v-call',
+    'call-active': 'v-call-active',
+    charge: 'v-charge',
+    notify: 'v-notify',
+  };
+
+  function setState(next) {
+    state.name = next;
+    island.dataset.state = next;
+    island.querySelectorAll('.view').forEach((v) => v.classList.toggle('on', v.classList.contains(VIEW[next]) ? true : false));
+    island.setAttribute('aria-label',
+      next === 'call' ? 'Incoming call from Mom' : 'Dynamic Island. Tap to expand.');
+    document.body.classList.toggle('is-expanded',
+      next === 'music' || next === 'timer' || next === 'call' || next === 'notify');
+    if (navigator.vibrate) navigator.vibrate(8);
+  }
+
+  function buzz(ms) { if (navigator.vibrate) navigator.vibrate(ms); }
+
+  /* ---------- toast ---------- */
+  let toastTimer = null;
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1900);
+  }
+
+  /* ---------- music ---------- */
+  const playBtn = $('playBtn');
+  function renderMusic() {
+    const { pos, dur, playing } = state.music;
+    const pct = Math.min(100, (pos / dur) * 100);
+    $('barFill').style.width = pct + '%';
+    $('barDot').style.left = pct + '%';
+    $('tCur').textContent = fmt(pos);
+    playBtn.dataset.playing = String(playing);
+    playBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    $('eqMini').classList.toggle('paused', !playing);
+  }
+  function playPause() {
+    state.music.playing = !state.music.playing;
+    renderMusic();
+    buzz(6);
+  }
+  function tune(delta) {
+    state.music.pos = (state.music.pos + delta + state.music.dur) % state.music.dur;
+    renderMusic();
+  }
+
+  /* ---------- timer ---------- */
+  const RING_C = 2 * Math.PI * 20;
+  function renderTimer() {
+    const t = state.timer;
+    const left = Math.max(0, t.remaining);
+    const label = fmt(left);
+    $('ringLabel').textContent = label;
+    $('timerMiniTime').textContent = label;
+    const frac = left / t.total;
+    const off = RING_C * (1 - frac);
+    $('ringProg').style.strokeDashoffset = off;
+    if ($('ringMini')) {
+      const miniC = 2 * Math.PI * 20;
+      $('ringMini').style.strokeDashoffset = miniC * (1 - frac);
+    }
+    $('timerSub').textContent = t.running ? 'Running · 5 min' : 'Paused';
+    $('timerPause').classList.toggle('paused', !t.running);
+    $('timerPause').querySelector('.i-tpause').style.display = t.running ? '' : 'none';
+    $('timerPause').querySelector('.i-tplay').style.display = t.running ? 'none' : '';
+    $('timerPause').setAttribute('aria-label', t.running ? 'Pause timer' : 'Resume timer');
+  }
+  function startTimer(seconds) {
+    state.timer.total = seconds;
+    state.timer.remaining = seconds;
+    state.timer.endAt = Date.now() + seconds * 1000;
+    state.timer.running = true;
+    setState('timer-mini');
+    renderTimer();
+  }
+  function toggleTimer() {
+    const t = state.timer;
+    if (t.running) {
+      t.remaining = Math.max(0, (t.endAt - Date.now()) / 1000);
+      t.running = false;
+    } else {
+      t.endAt = Date.now() + t.remaining * 1000;
+      t.running = true;
+    }
+    renderTimer();
+  }
+  function stopTimer() {
+    state.timer.running = false;
+    state.timer.remaining = 0;
+    setState('idle');
+  }
+
+  /* ---------- call ---------- */
+  function renderCall() {
+    if (state.name !== 'call-active' || !state.call.connectedAt) return;
+    $('callTime').textContent = fmt((Date.now() - state.call.connectedAt) / 1000);
+  }
+  function acceptCall() {
+    state.call.connectedAt = Date.now();
+    setState('call-active');
+    toast('Call connected');
+  }
+  function endCall() {
+    state.call.connectedAt = null;
+    setState('idle');
+    toast('Call ended');
+  }
+
+  /* ---------- notification ---------- */
+  let notifyTimer = null;
+  function showNotify(title, text) {
+    $('nTitle').textContent = title;
+    $('nText').textContent = text;
+    setState('notify');
+    clearTimeout(notifyTimer);
+    notifyTimer = setTimeout(() => {
+      if (state.name === 'notify') setState('idle');
+    }, 8000);
+  }
+
+  /* ---------- main tick ---------- */
+  // Throttled to ~10 fps: a per-frame DOM write loop is the classic cause of
+  // hot phones and janky spring animations on live-activity clones.
+  let last = performance.now();
+  let acc = 0;
+  const STEP = 0.1;
+
+  function tick(now) {
+    const dt = Math.min(0.5, (now - last) / 1000);
+    last = now;
+    acc += dt;
+    if (acc >= STEP) {
+      const step = acc;
+      acc = 0;
+
+      if (state.music.playing) {
+        state.music.pos += step;
+        if (state.music.pos >= state.music.dur) state.music.pos -= state.music.dur;
+        if (state.name === 'music-mini' || state.name === 'music') renderMusic();
+      }
+
+      if (state.timer.running && state.timer.endAt) {
+        const left = (state.timer.endAt - Date.now()) / 1000;
+        state.timer.remaining = Math.max(0, left);
+        renderTimer();
+        if (left <= 0) {
+          state.timer.running = false;
+          state.timer.remaining = 0;
+          setState('idle');
+          showNotify('Timer finished', 'Focus · 5 min complete');
+          buzz([24, 80, 24]);
+        }
+      }
+
+      renderCall();
+    }
+    requestAnimationFrame(tick);
+  }
+
+  /* ---------- interaction ---------- */
+  function toggleIsland() {
+    switch (state.name) {
+      case 'music-mini': setState('music'); break;
+      case 'music': setState('music-mini'); break;
+      case 'timer-mini': setState('timer'); break;
+      case 'timer': setState('timer-mini'); break;
+      case 'notify':
+        clearTimeout(notifyTimer);
+        setState('idle');
+        break;
+      case 'charge':
+        toast('Battery at ' + $('chgPct').textContent);
+        break;
+      case 'call':
+        toast('Answer or decline the call');
+        break;
+      default:
+        setState('music-mini');
+    }
+  }
+
+  island.addEventListener('click', (e) => {
+    if (e.target.closest('button')) return;
+    toggleIsland();
+  });
+  island.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleIsland(); }
+  });
+
+  playBtn.addEventListener('click', playPause);
+  $('prevBtn').addEventListener('click', () => tune(-10));
+  $('nextBtn').addEventListener('click', () => tune(30));
+
+  $('timerPause').addEventListener('click', toggleTimer);
+  $('timerClose').addEventListener('click', stopTimer);
+
+  $('acceptBtn').addEventListener('click', acceptCall);
+  $('declineBtn').addEventListener('click', endCall);
+
+  $('triggers').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    const act = btn.dataset.act;
+    if (act === 'music') {
+      state.music.playing = true;
+      state.music.pos = 42;
+      renderMusic();
+      setState('music-mini');
+      toast('Now playing');
+    } else if (act === 'timer') {
+      startTimer(300);
+      toast('Timer started');
+    } else if (act === 'call') {
+      setState('call');
+    } else if (act === 'charge') {
+      $('chgPct').textContent = '32%';
+      $('battFill').style.width = '32%';
+      setState('charge');
+    } else if (act === 'notify') {
+      showNotify('Alex', 'Are we still on for 8?');
+    } else if (act === 'reset') {
+      state.music.playing = false;
+      renderMusic();
+      state.timer.running = false;
+      state.timer.remaining = 0;
+      state.call.connectedAt = null;
+      setState('idle');
+    } else if (act === 'toggle') {
+      toggleIsland();
+    }
+  });
+
+  /* ---------- clock ---------- */
+  function clock() {
+    const d = new Date();
+    $('clock').textContent = d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+  clock();
+  setInterval(clock, 15000);
+
+  /* ---------- boot ---------- */
+  renderMusic();
+  setState('idle');
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

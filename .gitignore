@@ -1,0 +1,11 @@
+# build output
+android/build/
+android/island.apk
+*.apk
+*.idsig
+*.keystore
+
+# tooling
+.DS_Store
+__pycache__/
+*.pyc

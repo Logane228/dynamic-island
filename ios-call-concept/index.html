@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#05060b" />
+<title>Dynamic Island — Call concept</title>
+<style>
+  :root{
+    --spring: cubic-bezier(.34, 1.45, .5, 1);
+    --green: #30d158;
+    --red: #ff453a;
+    --ink: #fff;
+    --ink-2: rgba(255,255,255,.62);
+    --ink-3: rgba(255,255,255,.36);
+  }
+  *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html,body{ height:100%; margin:0; }
+  body{
+    background:#05060b; color:var(--ink); overflow:hidden;
+    font-family:-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing:antialiased; touch-action:manipulation;
+    user-select:none; -webkit-user-select:none;
+  }
+  .wall{ position:fixed; inset:0; }
+  .wall::before{
+    content:""; position:absolute; inset:-15%;
+    background:
+      radial-gradient(42% 28% at 18% 0%, rgba(48,209,88,.20), transparent 70%),
+      radial-gradient(40% 30% at 88% 6%, rgba(90,120,255,.22), transparent 70%),
+      radial-gradient(55% 40% at 50% 110%, rgba(255,69,58,.16), transparent 72%),
+      linear-gradient(180deg,#0a0b12 0%,#07080d 60%,#04050a 100%);
+  }
+
+  .statusbar{
+    position:fixed; z-index:5; top:0; left:0; right:0; height:44px;
+    padding:0 22px; display:flex; align-items:center; justify-content:space-between;
+    font-size:14px; font-weight:600; pointer-events:none; color:#fff;
+  }
+  .sicons{ display:flex; gap:5px; opacity:.9; }
+
+  /* ---------------- island ---------------- */
+  .island{
+    position:fixed; z-index:20; top:10px; left:50%; transform:translateX(-50%);
+    width:236px; height:38px; background:#000; border-radius:19px;
+    overflow:hidden; cursor:pointer;
+    transition: width .46s var(--spring), height .46s var(--spring), border-radius .46s var(--spring);
+    box-shadow: 0 10px 30px rgba(0,0,0,.55), inset 0 0 0 .5px rgba(255,255,255,.08);
+  }
+  .island[data-state="expanded"]{ width:min(94vw, 372px); height:196px; border-radius:40px; }
+  .island[data-state="ended"]{ width:210px; height:38px; }
+  .island[data-state="idle"]{ width:126px; height:36px; }
+
+  .cam{
+    position:absolute; z-index:3; top:50%; right:13px; width:11px; height:11px; margin-top:-5.5px;
+    border-radius:50%; background: radial-gradient(circle at 35% 32%, #2b3350, #080a12 60%, #000);
+    opacity:.9;
+  }
+  .island[data-state="expanded"] .cam{ opacity:0; }
+
+  .view{
+    position:absolute; inset:0; display:flex; align-items:center;
+    padding:0 14px; opacity:0; pointer-events:none; visibility:hidden;
+    transform:scale(.96);
+    transition: opacity .16s ease, transform .4s var(--spring), visibility 0s linear .2s;
+  }
+  .view.on{ opacity:1; pointer-events:auto; visibility:visible; transform:none;
+    transition: opacity .16s ease, transform .4s var(--spring), visibility 0s; }
+
+  /* compact */
+  .v-compact{ gap:9px; }
+  .wave{ display:flex; align-items:center; gap:2px; height:16px; flex:none; width:26px; }
+  .wave i{
+    display:block; width:2.5px; border-radius:2px; height:100%;
+    background: var(--green);
+    transform-origin:center; transform:scaleY(.3);
+    animation: bounce 1s ease-in-out infinite;
+  }
+  .wave i:nth-child(1){ animation-delay:-.9s; }
+  .wave i:nth-child(2){ animation-delay:-.55s; }
+  .wave i:nth-child(3){ animation-delay:-.2s; }
+  .wave i:nth-child(4){ animation-delay:-.75s; }
+  .wave i:nth-child(5){ animation-delay:-.4s; }
+  @keyframes bounce{ 0%,100%{ transform:scaleY(.25) } 50%{ transform:scaleY(1) } }
+  .wave.muted i{ animation-play-state:paused; transform:scaleY(.12); background:#8e8e93; }
+
+  .c-name{ font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0; }
+  .c-time{ font-size:12.5px; color:var(--ink-2); font-variant-numeric:tabular-nums; flex:none; margin-right:16px; }
+  .dot-live{ width:6px; height:6px; border-radius:50%; background:var(--green); box-shadow:0 0 8px var(--green); flex:none; }
+
+  /* expanded */
+  .v-expanded{ flex-direction:column; align-items:stretch; padding:14px 18px 12px; gap:0; }
+  .e-head{ display:flex; align-items:center; gap:12px; }
+  .avatar{
+    width:46px; height:46px; border-radius:50%; flex:none; display:grid; place-items:center;
+    font-size:19px; font-weight:600;
+    background:linear-gradient(140deg,#4f8cff,#7a4dff);
+    box-shadow: inset 0 0 0 .5px rgba(255,255,255,.25);
+  }
+  .e-meta{ flex:1; min-width:0; }
+  .e-name{ font-size:15.5px; font-weight:650; }
+  .e-sub{ font-size:12px; color:var(--ink-2); display:flex; align-items:center; gap:6px; margin-top:1px; }
+  .e-sub .sep{ opacity:.4; }
+  .e-timer{ font-variant-numeric:tabular-nums; }
+  .chev{ width:18px; height:18px; opacity:.4; flex:none; }
+
+  .e-controls{ display:flex; justify-content:space-around; margin-top:16px; }
+  .ctrl{ display:flex; flex-direction:column; align-items:center; gap:7px; background:none; border:0; color:#fff; padding:0; cursor:pointer; }
+  .ctrl .circle{
+    width:58px; height:58px; border-radius:50%; display:grid; place-items:center;
+    background: rgba(255,255,255,.14); transition: background .18s ease, transform .2s var(--spring);
+  }
+  .ctrl:active .circle{ transform:scale(.9); }
+  .ctrl.on .circle{ background:#fff; color:#000; }
+  .ctrl.end .circle{ background: var(--red); }
+  .ctrl.end:active .circle{ background:#d63a30; }
+  .ctrl span{ font-size:10.5px; color:var(--ink-2); letter-spacing:.1px; }
+  .ctrl.on span{ color:#fff; }
+  .ctrl svg{ width:24px; height:24px; fill:currentColor; }
+  .ctrl .slash{ display:none; }
+  .ctrl.on .slash{ display:block; }
+  .ctrl.on .noslash{ display:none; }
+
+  /* ended */
+  .v-ended{ gap:9px; justify-content:center; }
+  .v-ended .txt{ font-size:13px; font-weight:600; }
+  .v-ended .sub{ font-size:11.5px; color:var(--ink-3); }
+
+  /* secondary bubble */
+  .bubble{
+    position:fixed; z-index:19; top:58px; left:50%; transform:translate(-50%, -6px);
+    display:flex; align-items:center; gap:8px; height:34px; padding:0 13px;
+    background:#000; border-radius:17px; font-size:12px; color:#fff;
+    box-shadow:0 8px 22px rgba(0,0,0,.5), inset 0 0 0 .5px rgba(255,255,255,.09);
+    opacity:0; pointer-events:none; visibility:hidden;
+    transition: opacity .3s ease, transform .4s var(--spring), visibility 0s linear .3s;
+  }
+  .bubble.show{ opacity:1; pointer-events:auto; visibility:visible; transform:translate(-50%, 0);
+    transition: opacity .3s ease, transform .4s var(--spring), visibility 0s; }
+  .bubble .bt{ color:var(--ink-2); font-variant-numeric:tabular-nums; }
+  .bubble svg{ width:14px; height:14px; fill:#ffd60a; }
+
+  /* stage */
+  .stage{
+    position:fixed; z-index:10; left:0; right:0; bottom:0;
+    padding:18px 18px calc(20px + env(safe-area-inset-bottom, 0px));
+    background:linear-gradient(180deg, transparent, rgba(4,5,10,.85) 40%);
+  }
+  .stage h1{ margin:0 0 4px; font-size:19px; letter-spacing:-.3px; }
+  .stage p{ margin:0 0 12px; font-size:12px; color:var(--ink-2); line-height:1.45; }
+  .grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .trig{
+    border:0; padding:10px 6px; border-radius:13px; cursor:pointer; font:inherit;
+    font-size:12px; font-weight:600; color:#fff; background:rgba(255,255,255,.08);
+    transition: transform .16s var(--spring), background .16s ease;
+  }
+  .trig:active{ transform:scale(.95); }
+  .trig.wide{ grid-column:span 3; background:rgba(255,255,255,.05); color:var(--ink-2); }
+
+  /* app overlay */
+  .call-screen{
+    position:fixed; inset:0; z-index:40; display:flex; flex-direction:column; align-items:center;
+    padding:64px 24px 40px; background:linear-gradient(180deg,#101423,#080a12 60%,#05060a);
+    transform:translateY(101%); transition: transform .45s var(--spring);
+  }
+  .call-screen.show{ transform:none; }
+  .call-screen .big-avatar{
+    width:104px; height:104px; border-radius:50%; display:grid; place-items:center;
+    font-size:40px; font-weight:600; background:linear-gradient(140deg,#4f8cff,#7a4dff);
+    margin-top:24px;
+  }
+  .call-screen h2{ margin:14px 0 2px; font-size:22px; }
+  .call-screen .cs-time{ color:var(--ink-2); font-variant-numeric:tabular-nums; font-size:15px; }
+  .call-screen .wave{ height:44px; width:120px; gap:5px; margin:26px 0 6px; }
+  .call-screen .wave i{ width:6px; border-radius:3px; }
+  .call-screen .cs-controls{ display:flex; gap:34px; margin-top:auto; padding-bottom:10px; }
+  .call-screen .ctrl .circle{ width:66px; height:66px; }
+  .call-screen .back{
+    align-self:flex-start; background:rgba(255,255,255,.1); border:0; color:#fff;
+    padding:9px 14px; border-radius:12px; font:inherit; font-size:13px; cursor:pointer;
+  }
+
+  .toast{
+    position:fixed; z-index:50; left:50%; bottom:180px; transform:translate(-50%,8px);
+    background:rgba(28,28,34,.94); padding:9px 14px; border-radius:12px; font-size:12.5px;
+    opacity:0; pointer-events:none; transition:opacity .25s ease, transform .25s var(--spring);
+    box-shadow:0 10px 30px rgba(0,0,0,.45), inset 0 0 0 .5px rgba(255,255,255,.1);
+  }
+  .toast.show{ opacity:1; transform:translate(-50%,0); }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:.001ms !important; }
+    .island{ transition-duration:.001ms !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wall"></div>
+
+<div class="statusbar">
+  <span id="statusTime">9:41</span>
+  <span class="sicons" aria-hidden="true">
+    <svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1" opacity=".35"/></svg>
+    <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"><path d="M1.2 4.2a10 10 0 0 1 13.6 0"/><path d="M3.9 7a6.2 6.2 0 0 1 8.2 0"/><circle cx="8" cy="10" r="1.1" fill="#fff" stroke="none"/></svg>
+    <svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x=".6" y=".6" width="22" height="10.8" rx="3" stroke="#fff" stroke-opacity=".55"/><rect x="2.2" y="2.2" width="15.5" height="7.6" rx="1.8" fill="#fff"/><path d="M24.4 4.2v3.6c.9-.3 1.4-1 1.4-1.8s-.5-1.5-1.4-1.8z" fill="#fff" fill-opacity=".55"/></svg>
+  </span>
+</div>
+
+<!-- Dynamic Island -->
+<div class="island" id="island" data-state="compact" role="button" tabindex="0" aria-label="Call from Camille Laurent">
+  <span class="cam"></span>
+
+  <div class="view v-compact on">
+    <span class="dot-live" id="liveDot"></span>
+    <span class="wave" id="waveCompact"><i></i><i></i><i></i><i></i><i></i></span>
+    <span class="c-name">Camille</span>
+    <span class="c-time" id="timeCompact">04:12</span>
+  </div>
+
+  <div class="view v-expanded">
+    <div class="e-head" id="expandHeader">
+      <div class="avatar">C</div>
+      <div class="e-meta">
+        <div class="e-name">Camille Laurent</div>
+        <div class="e-sub"><span id="routeLabel">iPhone</span><span class="sep">·</span><span class="e-timer" id="timeExpanded">04:12</span></div>
+      </div>
+      <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+    </div>
+
+    <div class="e-controls">
+      <button class="ctrl" id="muteBtn" aria-label="Mute microphone">
+        <span class="circle">
+          <svg class="noslash" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M5 11a7 7 0 0 0 14 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M11 18h2v3h-2z"/></svg>
+          <svg class="slash" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-.6 1.8L9 6.6V6a3 3 0 0 1 3-3z"/><path d="M5 11a7 7 0 0 0 10.4 6.1M19 11a7 7 0 0 1-.7 3.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M11 18h2v3h-2z"/><path d="M4 3l16 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </span>
+        <span id="muteLabel">Mute</span>
+      </button>
+
+      <button class="ctrl" id="speakerBtn" aria-label="Audio output">
+        <span class="circle">
+          <svg viewBox="0 0 24 24"><path d="M4 9.5h3L12 6v12l-5-3.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </span>
+        <span id="speakerLabel">Speaker</span>
+      </button>
+
+      <button class="ctrl end" id="endBtn" aria-label="End call">
+        <span class="circle">
+          <svg viewBox="0 0 24 24" style="transform:rotate(135deg)"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.4.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.4 21 3 13.6 3 4c0-.6.4-1 1-1h3.4c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.4 0 .8-.3 1z"/></svg>
+        </span>
+        <span>End</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="view v-ended">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="#8e8e93"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.4.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.4 21 3 13.6 3 4c0-.6.4-1 1-1h3.4c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.4 0 .8-.3 1z" transform="rotate(135 12 12)"/></svg>
+    <span class="txt">Call ended</span>
+    <span class="sub" id="endedDuration">04:12</span>
+  </div>
+</div>
+
+<!-- secondary live activity -->
+<div class="bubble" id="bubble" role="button" tabindex="0" aria-label="Timer live activity">
+  <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 .01 0z" fill="none" stroke="#ffd60a" stroke-width="2"/><path d="M12 7v5l3 2" fill="none" stroke="#ffd60a" stroke-width="2" stroke-linecap="round"/></svg>
+  <span>Timer</span>
+  <span class="bt" id="bubbleTime">12:48</span>
+</div>
+
+<div class="stage">
+  <h1>Call · Live Activity</h1>
+  <p>Tap the island to expand the call card. Tap the name row to jump back into the call screen. The green bars are the live mic level.</p>
+  <div class="grid">
+    <button class="trig" data-act="compact">Compact</button>
+    <button class="trig" data-act="expanded">Expanded</button>
+    <button class="trig" data-act="split">Split view</button>
+    <button class="trig" data-act="mute">Mute</button>
+    <button class="trig" data-act="speaker">Change route</button>
+    <button class="trig" data-act="end">End call</button>
+    <button class="trig wide" data-act="open">Open call screen (single-tap routing)</button>
+    <button class="trig wide" data-act="restart">Restart call</button>
+  </div>
+</div>
+
+<div class="call-screen" id="callScreen">
+  <button class="back" id="backBtn">‹ Back to island</button>
+  <div class="big-avatar">C</div>
+  <h2>Camille Laurent</h2>
+  <div class="cs-time" id="timeScreen">04:12</div>
+  <div class="wave" id="waveScreen"><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="cs-controls">
+    <button class="ctrl" id="muteBtn2" aria-label="Mute microphone">
+      <span class="circle">
+        <svg class="noslash" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M5 11a7 7 0 0 0 14 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M11 18h2v3h-2z"/></svg>
+        <svg class="slash" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-.6 1.8L9 6.6V6a3 3 0 0 1 3-3z"/><path d="M5 11a7 7 0 0 0 10.4 6.1M19 11a7 7 0 0 1-.7 3.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 3l16 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </span>
+      <span id="muteLabel2">Mute</span>
+    </button>
+    <button class="ctrl end" id="endBtn2" aria-label="End call">
+      <span class="circle"><svg viewBox="0 0 24 24" style="transform:rotate(135deg)"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.4.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.4 21 3 13.6 3 4c0-.6.4-1 1-1h3.4c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.4 0 .8-.3 1z"/></svg></span>
+      <span>End</span>
+    </button>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  const island = document.getElementById('island');
+  const bubble = document.getElementById('bubble');
+  const callScreen = document.getElementById('callScreen');
+
+  const el = (id) => document.getElementById(id);
+  const fmt = (s) => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+
+  const state = { seconds: 252, muted: false, split: false, ended: false, expanded: false, route: 0 };
+  const routes = ['iPhone', 'Speaker', 'AirPods Pro'];
+
+  function toast(msg) {
+    const t = el('toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(t._t);
+    t._t = setTimeout(() => t.classList.remove('show'), 1800);
+  }
+
+  function render() {
+    const st = island.dataset.state;
+    // views
+    island.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
+    if (state.ended) island.querySelector('.v-ended').classList.add('on');
+    else if (state.expanded) island.querySelector('.v-expanded').classList.add('on');
+    else island.querySelector('.v-compact').classList.add('on');
+
+    // muted state
+    const muted = state.muted;
+    document.querySelectorAll('.wave').forEach(w => w.classList.toggle('muted', muted));
+    document.querySelectorAll('#muteBtn, #muteBtn2').forEach(b => b.classList.toggle('on', muted));
+    el('muteLabel').textContent = muted ? 'Unmute' : 'Mute';
+    el('muteLabel2').textContent = muted ? 'Unmute' : 'Mute';
+    el('liveDot').style.background = muted ? '#8e8e93' : '#30d158';
+
+    // text
+    const txt = fmt(state.seconds);
+    el('timeCompact').textContent = txt;
+    el('timeExpanded').textContent = txt;
+    el('timeScreen').textContent = txt;
+    el('routeLabel').textContent = routes[state.route];
+
+    // split bubble
+    const showBubble = state.split && !state.ended && !state.expanded;
+    bubble.classList.toggle('show', showBubble);
+  }
+
+  function setState(next) {
+    state.expanded = next === 'expanded';
+    if (next === 'ended') state.ended = true;
+    if (next === 'compact') state.ended = false;
+    island.dataset.state = state.ended ? 'ended' : (state.expanded ? 'expanded' : 'compact');
+    render();
+  }
+
+  function toggleMute() {
+    state.muted = !state.muted;
+    render();
+    toast(state.muted ? 'Microphone muted' : 'Microphone on');
+  }
+
+  function cycleRoute() {
+    state.route = (state.route + 1) % routes.length;
+    render();
+    toast('Audio → ' + routes[state.route]);
+  }
+
+  function endCall() {
+    state.ended = true;
+    el('endedDuration').textContent = fmt(state.seconds);
+    island.dataset.state = 'ended';
+    render();
+    callScreen.classList.remove('show');
+    setTimeout(() => { if (state.ended) island.dataset.state = 'idle'; }, 2500);
+  }
+
+  function restart() {
+    state.ended = false; state.seconds = 0; state.muted = false; state.route = 0;
+    island.dataset.state = 'compact';
+    render();
+    toast('Call connected');
+  }
+
+  // ---- interactions -------------------------------------------------------
+  island.addEventListener('click', (e) => {
+    if (e.target.closest('button')) return;
+    if (state.ended) return;
+    if (!state.expanded) { setState('expanded'); }
+    else if (e.target.closest('#expandHeader')) { callScreen.classList.add('show'); }
+    else setState('compact');
+  });
+
+  el('expandHeader').addEventListener('click', (e) => {
+    e.stopPropagation();
+    callScreen.classList.add('show');
+  });
+
+  el('muteBtn').addEventListener('click', (e) => { e.stopPropagation(); toggleMute(); });
+  el('muteBtn2').addEventListener('click', (e) => { e.stopPropagation(); toggleMute(); });
+  el('speakerBtn').addEventListener('click', (e) => { e.stopPropagation(); cycleRoute(); });
+  el('endBtn').addEventListener('click', (e) => { e.stopPropagation(); endCall(); });
+  el('endBtn2').addEventListener('click', (e) => { e.stopPropagation(); endCall(); });
+  el('backBtn').addEventListener('click', () => callScreen.classList.remove('show'));
+
+  bubble.addEventListener('click', () => toast('Timer Live Activity → opens the Timer app'));
+
+  document.querySelectorAll('[data-act]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const a = btn.dataset.act;
+      if (a === 'compact') setState('compact');
+      else if (a === 'expanded') setState('expanded');
+      else if (a === 'split') { state.split = !state.split; state.expanded = false; state.ended = false;
+        island.dataset.state = 'compact'; render(); toast(state.split ? 'Timer activity added' : 'Timer activity removed'); }
+      else if (a === 'mute') toggleMute();
+      else if (a === 'speaker') cycleRoute();
+      else if (a === 'end') endCall();
+      else if (a === 'restart') restart();
+      else if (a === 'open') callScreen.classList.add('show');
+    });
+  });
+
+  // ---- clock --------------------------------------------------------------
+  setInterval(() => {
+    if (state.ended) return;
+    state.seconds++;
+    render();
+  }, 1000);
+
+  // status bar clock
+  const tick = () => {
+    const d = new Date();
+    el('statusTime').textContent = d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
+  };
+  tick(); setInterval(tick, 20000);
+
+  render();
+})();
+</script>
+</body>
+</html>
