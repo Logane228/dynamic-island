@@ -40,6 +40,7 @@ public class MainActivity extends Activity {
     private String debugBase = "measuring status bar…";
     private android.widget.SeekBar posSeek;
     private Switch lockSwitch;
+    private final Button[] chargeBtns = new Button[4];
     private TextView posLabel;
     private final Handler h = new Handler();
 
@@ -225,6 +226,32 @@ public class MainActivity extends Activity {
         pclp.topMargin = dp(10);
         root.addView(posCard, pclp);
 
+        LinearLayout chargeCard = card();
+        chargeCard.setPadding(dp(16), dp(12), dp(16), dp(14));
+        TextView chargeTitle = new TextView(this);
+        chargeTitle.setText("Charging animation");
+        chargeTitle.setTextSize(14f);
+        chargeTitle.setTextColor(Color.WHITE);
+        chargeTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        chargeCard.addView(chargeTitle);
+
+        LinearLayout chargeRow = new LinearLayout(this);
+        chargeRow.setOrientation(LinearLayout.HORIZONTAL);
+        String[] chargeLabels = {"Orb", "Bolt", "Pill", "Off"};
+        for (int i = 0; i < chargeLabels.length; i++) {
+            chargeBtns[i] = choiceBtn(chargeLabels[i], i);
+            chargeRow.addView(chargeBtns[i], weight());
+        }
+        LinearLayout.LayoutParams crlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        crlp.topMargin = dp(8);
+        chargeCard.addView(chargeRow, crlp);
+
+        LinearLayout.LayoutParams cclp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cclp.topMargin = dp(12);
+        root.addView(chargeCard, cclp);
+
         TextView tryLabel = new TextView(this);
         tryLabel.setText("TRY A LIVE ACTIVITY");
         tryLabel.setTextSize(11);
@@ -271,7 +298,7 @@ public class MainActivity extends Activity {
 
         TextView foot = new TextView(this);
         foot.setText("Unlock the position to drag the pill; locked it stays around the camera. Tap to expand it; "
-                + "long-press to come back here. Music appears by itself while something is playing.\n\nv3.9");
+                + "long-press to come back here. Music appears by itself while something is playing.\n\nv4.0");
         foot.setTextSize(11.5f);
         foot.setTextColor(0xFF6C7080);
         foot.setLineSpacing(dp(3), 1f);
@@ -385,6 +412,48 @@ public class MainActivity extends Activity {
         return row;
     }
 
+    private Button choiceBtn(String label, final int style) {
+        Button b = new Button(this);
+        b.setAllCaps(false);
+        b.setText(label);
+        b.setTextSize(12.5f);
+        b.setTextColor(Color.WHITE);
+        b.setStateListAnimator(null);
+        b.setMinHeight(0);
+        b.setMinimumHeight(0);
+        b.setPadding(0, dp(9), 0, dp(9));
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(0x14FFFFFF);
+        g.setCornerRadius(dp(12));
+        b.setBackground(g);
+        b.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                getSharedPreferences("island", MODE_PRIVATE).edit()
+                        .putInt("chargeStyle", style).apply();
+                if (IslandService.controller != null) {
+                    IslandService.controller.setChargeStyle(style);
+                    IslandService.controller.demo("charge");
+                }
+                refreshChargeStyle();
+            }
+        });
+        return b;
+    }
+
+    private void refreshChargeStyle() {
+        int style = IslandService.controller != null
+                ? IslandService.controller.chargeStyle()
+                : getSharedPreferences("island", MODE_PRIVATE).getInt("chargeStyle", 0);
+        for (int i = 0; i < chargeBtns.length; i++) {
+            if (chargeBtns[i] == null) continue;
+            GradientDrawable g = new GradientDrawable();
+            g.setCornerRadius(dp(12));
+            g.setColor(i == style ? 0xFF0A84FF : 0x14FFFFFF);
+            chargeBtns[i].setBackground(g);
+            chargeBtns[i].setTextColor(i == style ? Color.WHITE : 0xFFB9BECD);
+        }
+    }
+
     private Button posBtn(String label, final String kind) {
         Button b = new Button(this);
         b.setAllCaps(false);
@@ -470,6 +539,7 @@ public class MainActivity extends Activity {
 
     private void refresh() {
         updateDebug();
+        refreshChargeStyle();
         boolean overlay = Settings.canDrawOverlays(this);
         overlayState.setText(overlay ? "Allowed" : "Required · tap Allow");
         overlayState.setTextColor(overlay ? 0xFF30D158 : 0xFFFF9F0A);

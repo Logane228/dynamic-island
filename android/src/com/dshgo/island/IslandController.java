@@ -69,7 +69,7 @@ import java.util.Locale;
 public class IslandController {
 
     private static final int NONE = 0, MEDIA = 1, NOTIF = 2, CHARGE = 3, TIMER = 4, DONE = 5;
-    private static final int CHARGE_BIG = 6, QUICK = 7, DASH = 8, LIVE = 9, CALL = 10, CALL_ENDED = 11;
+    private static final int CHARGE_BIG = 6, QUICK = 7, DASH = 8, LIVE = 9, CALL = 10, CALL_ENDED = 11, CHARGE_BOLT = 12;
     private static final int POS_VERSION = 6;
 
     private final Context ctx;
@@ -397,6 +397,10 @@ public class IslandController {
                 w = dp(300); hgt = dp(200); radius = dp(40);
                 buildChargeBig();
                 break;
+            case CHARGE_BOLT:
+                w = dp(286); hgt = dp(140); radius = dp(36);
+                buildChargeBolt();
+                break;
             case QUICK:
                 w = dp(300); hgt = dp(126); radius = dp(34);
                 buildQuick();
@@ -523,6 +527,56 @@ public class IslandController {
 
         expanded.addView(col, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        final int target = Math.max(1, Math.min(100, pct));
+        chargeAnim = ValueAnimator.ofInt(0, target);
+        chargeAnim.setDuration(1100);
+        chargeAnim.setInterpolator(new DecelerateInterpolator());
+        chargeAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(ValueAnimator a) {
+                int v = (Integer) a.getAnimatedValue();
+                if (chargePctTv != null) chargePctTv.setText(v + "%");
+                if (chargeBar != null) chargeBar.setProgress(v);
+            }
+        });
+        chargeAnim.start();
+    }
+
+    private void buildChargeBolt() {
+        LinearLayout col = new LinearLayout(ctx);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        ImageView bolt = new ImageView(ctx);
+        bolt.setImageResource(R.drawable.ic_bolt);
+        bolt.setLayoutParams(new LinearLayout.LayoutParams(dp(30), dp(30)));
+        col.addView(bolt);
+
+        TextView label = tv("Charging", 11f, 0x99FFFFFF, false);
+        label.setPadding(0, dp(3), 0, 0);
+        col.addView(label);
+
+        chargePctTv = tv("0%", 26f, 0xFFFFFFFF, true);
+        chargePctTv.setFontFeatureSettings("tnum");
+        col.addView(chargePctTv);
+
+        chargeBar = new ProgressBar(ctx, null, android.R.attr.progressBarStyleHorizontal);
+        chargeBar.setMax(100);
+        chargeBar.setProgressTintList(ColorStateList.valueOf(accent()));
+        chargeBar.setProgressBackgroundTintList(ColorStateList.valueOf(0x33FFFFFF));
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(150), dp(4));
+        bp.topMargin = dp(5);
+        chargeBar.setLayoutParams(bp);
+        col.addView(chargeBar);
+
+        expanded.addView(col, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        boltPulse = ObjectAnimator.ofFloat(bolt, View.ALPHA, 1f, 0.42f);
+        boltPulse.setDuration(820);
+        boltPulse.setRepeatCount(ValueAnimator.INFINITE);
+        boltPulse.setRepeatMode(ValueAnimator.REVERSE);
+        boltPulse.start();
 
         final int target = Math.max(1, Math.min(100, pct));
         chargeAnim = ValueAnimator.ofInt(0, target);
@@ -2048,10 +2102,25 @@ public class IslandController {
 
     /* ------------------------------------------------------------ behaviour */
 
+    int chargeStyle() {
+        return prefs().getInt("chargeStyle", 0);
+    }
+
+    void setChargeStyle(int style) {
+        prefs().edit().putInt("chargeStyle", style).apply();
+    }
+
     private void showCharging() {
         h.removeCallbacks(chargeToCompact);
         h.removeCallbacks(chargeHide);
-        applyMode(CHARGE_BIG, false);
+        int style = chargeStyle();
+        if (style == 3) return;                       // animation off
+        if (style == 2) {                             // compact pill only
+            applyMode(CHARGE, false);
+            h.postDelayed(chargeHide, 3000);
+            return;
+        }
+        applyMode(style == 0 ? CHARGE_BIG : CHARGE_BOLT, false);
         h.postDelayed(chargeToCompact, 3200);
     }
 
