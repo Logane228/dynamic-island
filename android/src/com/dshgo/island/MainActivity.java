@@ -9,6 +9,8 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
+import android.app.role.RoleManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.provider.Settings;
@@ -227,6 +229,53 @@ public class MainActivity extends Activity {
         pclp.topMargin = dp(10);
         root.addView(posCard, pclp);
 
+        Button homeBtn = new Button(this);
+        homeBtn.setAllCaps(false);
+        homeBtn.setText("Set as default home screen");
+        homeBtn.setTextSize(13.5f);
+        homeBtn.setTextColor(0xFFFFFFFF);
+        homeBtn.setStateListAnimator(null);
+        GradientDrawable hbg = new GradientDrawable();
+        hbg.setColor(0xFF1B1E26);
+        hbg.setCornerRadius(dp(16));
+        hbg.setStroke(dp(1), 0x22FFFFFF);
+        homeBtn.setBackground(hbg);
+        homeBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                try {
+                    startActivity(new Intent(Settings.ACTION_HOME_SETTINGS));
+                } catch (Exception e) {
+                    try {
+                        startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS));
+                    } catch (Exception ignored) {}
+                }
+            }
+        });
+        LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hlp.topMargin = dp(12);
+        root.addView(homeBtn, hlp);
+
+        Button previewBtn = new Button(this);
+        previewBtn.setAllCaps(false);
+        previewBtn.setText("Preview home screen");
+        previewBtn.setTextSize(13.5f);
+        previewBtn.setTextColor(0xFFB9C2D6);
+        previewBtn.setStateListAnimator(null);
+        GradientDrawable pbg = new GradientDrawable();
+        pbg.setColor(0x0FFFFFFF);
+        pbg.setCornerRadius(dp(16));
+        previewBtn.setBackground(pbg);
+        previewBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                try { startActivity(new Intent(MainActivity.this, LauncherActivity.class)); } catch (Exception ignored) {}
+            }
+        });
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        plp.topMargin = dp(8);
+        root.addView(previewBtn, plp);
+
         LinearLayout chargeCard = card();
         chargeCard.setPadding(dp(16), dp(12), dp(16), dp(14));
         TextView chargeTitle = new TextView(this);
@@ -299,7 +348,7 @@ public class MainActivity extends Activity {
 
         TextView foot = new TextView(this);
         foot.setText("Unlock the position to drag the pill; locked it stays around the camera. Tap to expand it; "
-                + "long-press to come back here. Music appears by itself while something is playing.\n\nv4.2");
+                + "long-press to come back here. Music appears by itself while something is playing.\n\nv4.5");
         foot.setTextSize(11.5f);
         foot.setTextColor(0xFF6C7080);
         foot.setLineSpacing(dp(3), 1f);

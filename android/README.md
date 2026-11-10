@@ -136,6 +136,11 @@ build, so the pill uses the 2 dp default rather than centring on a hole rect.
 
 ## Changelog
 
+- **4.5** — launcher: `LauncherActivity` registered for `CATEGORY_HOME`, clock,
+  4-column app grid; `<queries>` added so the grid sees every launchable app.
+- **4.4** — "Set as default home screen" opens the system home-app settings, plus
+  a "Preview home screen" button.
+- **4.3** — first launcher activity (clock + app grid).
 - **4.2** — Control Center panel: swipe down on the capsule, torch toggle,
   Wi-Fi / Bluetooth shortcuts, brightness and volume sliders.
 - **4.1** — second charging orb: *Ribbon*, dotted particle ribbons orbiting

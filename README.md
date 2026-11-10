@@ -38,6 +38,9 @@ started from, and the iOS/ActivityKit specs written along the way.
 - Secondary bubble for the next activity, tap to swap it into focus.
 - In-app call screen reached from the expanded card.
 - Position lock, presets, Material You accent colours.
+- **Optional home screen**: the app registers `CATEGORY_HOME`, so it can be chosen
+  as the default launcher — large clock, 4-column app grid (all launchable apps),
+  long-press for app info, "Island settings" shortcut.
 - **Control Center**: swipe down on the capsule for a panel with torch toggle,
   Wi-Fi panel, Bluetooth settings, brightness and media-volume sliders.
 - **Charging animation picker** in the app: *Orb* (liquid glass, Siri wave),
