@@ -44,6 +44,8 @@ public class MainActivity extends Activity {
     private Switch lockSwitch;
     private final Button[] chargeBtns = new Button[5];
     private final Button[] notifBtns = new Button[3];
+    private final Button[] shapeBtns = new Button[2];
+    private final TextView[] accentDots = new TextView[5];
     private static final int[] CHARGE_STYLES = {0, 4, 1, 2, 3};
     private TextView posLabel;
     private final Handler h = new Handler();
@@ -229,6 +231,91 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         pclp.topMargin = dp(10);
         root.addView(posCard, pclp);
+
+        LinearLayout look = card();
+        look.setPadding(dp(16), dp(12), dp(16), dp(14));
+        TextView lookTitle = new TextView(this);
+        lookTitle.setText("Capsule look");
+        lookTitle.setTextSize(14f);
+        lookTitle.setTextColor(Color.WHITE);
+        lookTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        look.addView(lookTitle);
+
+        LinearLayout shapeRow = new LinearLayout(this);
+        shapeRow.setOrientation(LinearLayout.HORIZONTAL);
+        String[] shapeLabels = {"Capsule", "Arrondi"};
+        for (int i = 0; i < 2; i++) {
+            shapeBtns[i] = choiceBtn(shapeLabels[i], 0);
+            final int value = i;
+            shapeBtns[i].setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    getSharedPreferences("island", MODE_PRIVATE).edit()
+                            .putInt("shape", value).apply();
+                    if (IslandService.controller != null) {
+                        IslandService.controller.refreshLook();
+                    }
+                    refreshShape();
+                }
+            });
+            shapeRow.addView(shapeBtns[i], weight());
+        }
+        LinearLayout.LayoutParams shrp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        shrp.topMargin = dp(8);
+        look.addView(shapeRow, shrp);
+
+        LinearLayout accentRow = new LinearLayout(this);
+        accentRow.setOrientation(LinearLayout.HORIZONTAL);
+        final int[] accents = {0xFF0A84FF, 0xFF30D158, 0xFFB06CFF, 0xFFFF6B8A, 0xFFFFB020};
+        for (int i = 0; i < accents.length; i++) {
+            final int color = accents[i];
+            TextView dot = new TextView(this);
+            dot.setText("");
+            GradientDrawable dg = new GradientDrawable();
+            dg.setShape(GradientDrawable.OVAL);
+            dg.setColor(color);
+            dg.setStroke(dp(2), 0x33FFFFFF);
+            dot.setBackground(dg);
+            dot.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    getSharedPreferences("island", MODE_PRIVATE).edit()
+                            .putInt("accent", color).apply();
+                    if (IslandService.controller != null) {
+                        IslandService.controller.refreshLook();
+                    }
+                    refreshAccent();
+                }
+            });
+            LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(dp(30), dp(30));
+            dlp.rightMargin = dp(10);
+            accentRow.addView(dot, dlp);
+            accentDots[i] = dot;
+        }
+        TextView resetAccent = new TextView(this);
+        resetAccent.setText("Auto");
+        resetAccent.setTextSize(11.5f);
+        resetAccent.setTextColor(0xFFB9BECD);
+        resetAccent.setPadding(dp(10), dp(6), dp(10), dp(6));
+        resetAccent.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                getSharedPreferences("island", MODE_PRIVATE).edit()
+                        .putInt("accent", -1).apply();
+                if (IslandService.controller != null) {
+                    IslandService.controller.refreshLook();
+                }
+                refreshAccent();
+            }
+        });
+        accentRow.addView(resetAccent);
+        LinearLayout.LayoutParams arlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        arlp.topMargin = dp(12);
+        look.addView(accentRow, arlp);
+
+        LinearLayout.LayoutParams lookLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lookLp.topMargin = dp(12);
+        root.addView(look, lookLp);
 
         Button homeBtn = new Button(this);
         homeBtn.setAllCaps(false);
@@ -546,9 +633,31 @@ public class MainActivity extends Activity {
                 }
                 refreshChargeStyle();
         refreshNotifScope();
+        refreshShape();
+        refreshAccent();
             }
         });
         return b;
+    }
+
+    private void refreshShape() {
+        int shape = getSharedPreferences("island", MODE_PRIVATE).getInt("shape", 0);
+        for (int i = 0; i < shapeBtns.length; i++) {
+            if (shapeBtns[i] == null) continue;
+            GradientDrawable g = new GradientDrawable();
+            g.setCornerRadius(dp(12));
+            g.setColor(i == shape ? 0xFF0A84FF : 0x14FFFFFF);
+            shapeBtns[i].setBackground(g);
+            shapeBtns[i].setTextColor(i == shape ? Color.WHITE : 0xFFB9BECD);
+        }
+    }
+
+    private void refreshAccent() {
+        int accent = getSharedPreferences("island", MODE_PRIVATE).getInt("accent", -1);
+        for (int i = 0; i < accentDots.length; i++) {
+            if (accentDots[i] == null) continue;
+            accentDots[i].setAlpha(accent == -1 ? 0.55f : 1f);
+        }
     }
 
     private void refreshNotifScope() {

@@ -42,6 +42,8 @@ started from, and the iOS/ActivityKit specs written along the way.
   header with ✕, per-app glass stacks with a count pill (tap to expand),
   long-press to dismiss one, tap to open the app. Opened by a top swipe on the
   home screen or from Island settings.
+- **Capsule look**: capsule vs soft-rounded shape, five accent colours + Auto
+  (system Material You), on top of the existing position presets.
 - **Launcher search**: live app filter in a glass search bar; while searching the
   widget hides and the grid shows matches.
 - **Smart notification routing**: island shows *Tout / Messages / Off*, dedupes

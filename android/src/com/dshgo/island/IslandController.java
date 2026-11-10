@@ -424,6 +424,11 @@ public class IslandController {
                 break;
         }
 
+        // shape preference: capsule (default) or soft rounded rectangle
+        if (!open && prefs().getInt("shape", 0) == 1) {
+            radius = dp(15);
+        }
+
         compact.setVisibility((open || big) ? View.GONE : View.VISIBLE);
         expanded.setVisibility((open || big) ? View.VISIBLE : View.GONE);
         expanded.setAlpha(1f);
@@ -1500,6 +1505,12 @@ public class IslandController {
         } else if (mode == NONE || mode == MEDIA || mode == TIMER) {
             applyMode(LIVE, false);
         }
+    }
+
+    /** Re-applies accent/shape changes without restarting the overlay. */
+    public void refreshLook() {
+        if (mode != NONE) applyMode(mode, open);
+        else applyMode(NONE, false);
     }
 
     /** Called when the notification scope changed in settings. */
@@ -2605,6 +2616,8 @@ public class IslandController {
     }
 
     private int accent() {
+        int custom = prefs().getInt("accent", -1);
+        if (custom != -1) return custom;
         try {
             if (Build.VERSION.SDK_INT >= 31) {
                 return ctx.getColor(android.R.color.system_accent1_200);

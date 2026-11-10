@@ -136,6 +136,8 @@ build, so the pill uses the 2 dp default rather than centring on a hole rect.
 
 ## Changelog
 
+- **4.15** — capsule look: shape (capsule / rounded) and accent colour
+  (blue, green, violet, pink, amber, Auto).
 - **4.14** — notification centre restyled to iOS: 56 sp light clock, uppercase
   date, grouped glass stacks with count badges, expandable, gradient backdrop.
 - **4.13** — ongoing notifications were being filtered out (empty list); they are
