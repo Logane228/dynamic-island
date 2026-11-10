@@ -309,6 +309,28 @@ public class MainActivity extends Activity {
         nrlp.topMargin = dp(8);
         notifCard.addView(notifRow, nrlp);
 
+        Button shadeBtn = new Button(this);
+        shadeBtn.setAllCaps(false);
+        shadeBtn.setText("Ouvrir notre volet de notifications");
+        shadeBtn.setTextSize(13f);
+        shadeBtn.setTextColor(0xFFFFFFFF);
+        shadeBtn.setStateListAnimator(null);
+        GradientDrawable sbg = new GradientDrawable();
+        sbg.setColor(0x1FFFFFFF);
+        sbg.setCornerRadius(dp(16));
+        sbg.setStroke(dp(1), 0x38FFFFFF);
+        shadeBtn.setBackground(sbg);
+        shadeBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                try { startActivity(new Intent(MainActivity.this, ShadeActivity.class)); }
+                catch (Exception ignored) { }
+            }
+        });
+        LinearLayout.LayoutParams sblp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sblp.topMargin = dp(8);
+        notifCard.addView(shadeBtn, sblp);
+
         LinearLayout.LayoutParams nclp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         nclp.topMargin = dp(12);

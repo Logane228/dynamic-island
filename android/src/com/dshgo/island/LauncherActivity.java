@@ -115,6 +115,33 @@ public class LauncherActivity extends Activity {
         handler.removeCallbacks(tick);
     }
 
+    private float shadeDownY = -1f;
+
+    @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
+        switch (ev.getActionMasked()) {
+            case android.view.MotionEvent.ACTION_DOWN:
+                shadeDownY = ev.getY();
+                break;
+            case android.view.MotionEvent.ACTION_UP: {
+                float upY = ev.getY();
+                // swipe down from the very top opens our own shade
+                if (shadeDownY >= 0 && shadeDownY < dp(40) && upY > dp(160)) {
+                    shadeDownY = -1f;
+                    try {
+                        startActivity(new Intent(this, ShadeActivity.class));
+                    } catch (Exception ignored) { }
+                    return true;
+                }
+                shadeDownY = -1f;
+                break;
+            }
+            default:
+                break;
+        }
+        return super.dispatchTouchEvent(ev);
+    }
+
     @Override public void onBackPressed() {
         if (jiggle) { exitJiggle(); return; }
         // home screen: swallow back

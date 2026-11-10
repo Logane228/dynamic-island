@@ -136,6 +136,10 @@ build, so the pill uses the 2 dp default rather than centring on a hole rect.
 
 ## Changelog
 
+- **4.11** — shade polish: vertical quick tiles, ✕ close button.
+- **4.10** — our own notification shade: quick tiles, brightness, live list from
+  `NotificationListenerService`, per-item dismiss, clear-all; opened by a top
+  swipe on the home screen or the settings button.
 - **4.9** — search bar no longer collapses the home screen when the keyboard
   opens (`adjustNothing`), `Aa` moved clear of the field, widget hides while
   searching.
