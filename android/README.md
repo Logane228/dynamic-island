@@ -136,6 +136,8 @@ build, so the pill uses the 2 dp default rather than centring on a hole rect.
 
 ## Changelog
 
+- **3.8** — liquid-glass orb glow: three pastel sweep gradients (pink / amber /
+  cyan / violet) rotating at different speeds with a soft inner bloom.
 - **3.7** — animated RGB ring drawn on the capsule border (SweepGradient, 30 fps,
   follows the corner-radius morph, never consumes touches).
 - **3.6** — foreground-service notification minimised: `IMPORTANCE_MIN`, no sound,

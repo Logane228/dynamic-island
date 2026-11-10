@@ -79,7 +79,7 @@ public class IslandController {
     private Context winCtx;
     private int winType = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
     private FrameLayout root;
-    private RgbRingView rgbRing;
+    private OrbGlowView rgbRing;
     private LinearLayout compact;
     private LinearLayout expanded;
     private GradientDrawable bg;
@@ -264,7 +264,7 @@ public class IslandController {
         root.addView(expanded, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        rgbRing = new RgbRingView(ctx);
+        rgbRing = new OrbGlowView(ctx);
         root.addView(rgbRing, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         rgbRing.setRadius(dp(18));

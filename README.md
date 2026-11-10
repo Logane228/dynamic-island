@@ -38,8 +38,9 @@ started from, and the iOS/ActivityKit specs written along the way.
 - Secondary bubble for the next activity, tap to swap it into focus.
 - In-app call screen reached from the expanded card.
 - Position lock, presets, Material You accent colours.
-- Animated RGB ring around the capsule border (thin sweep gradient, 30 fps,
-  corner radius follows the morph).
+- Iridescent "liquid glass" glow around the capsule border — three pastel
+  sweep gradients rotating at different speeds, inspired by the Siri-wave orb
+  (replaces the flat RGB ring as of 3.8).
 
 **Build**
 
