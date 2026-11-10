@@ -136,22 +136,36 @@ build, so the pill uses the 2 dp default rather than centring on a hole rect.
 
 ## Changelog
 
+- **3.7** — animated RGB ring drawn on the capsule border (SweepGradient, 30 fps,
+  follows the corner-radius morph, never consumes touches).
+- **3.6** — foreground-service notification minimised: `IMPORTANCE_MIN`, no sound,
+  no badge, hidden on the lock screen.
+- **3.5** — tap on the idle capsule opens the quick panel (no clock); opening the
+  app goes through a `PendingIntent` with
+  `MODE_BACKGROUND_ACTIVITY_START_ALLOWED` because Android blocks background
+  activity starts.
+- **3.4** — tap on idle tries to open the app, haptic tick on every tap.
+- **3.3** — removed the automatic idle clock rotation: the empty capsule stays
+  empty, long-press opens the dashboard.
+- **3.2** — secondary activity bubble (tap to swap focus), long-press expands,
+  accents from the system Material You colour.
+- **3.1** — left/right edge anchoring presets for punch-hole / secondary-display
+  layouts; presets re-lock the position.
 - **3.0** — fixed camera position (6 dp, clear of the status-bar pull-down strip),
   *Lock position* switch on by default so the pill cannot drift, presets re-lock.
 - **2.9** — tap detection reworked around the system touch slop; in-app tap/swipe
   counters for diagnostics.
-- **3.7** — animated RGB ring drawn on the capsule border (SweepGradient, follows
-  the corner-radius morph, never consumes touches).
+- **2.8** — diagnostics line (`status bar · cutout · taps · swipes`).
 - **2.7** — full-screen call screen reached by a single tap on the expanded call
   card; shared mute / route / end state with the island.
 - **2.6** — swipe paging between concurrent activities, multi-task dots,
   expand/collapse swipes, switcher arrows on the call card.
 - **2.5** — call live activity: animated waveform, duration timer, expandable
-  Mute / Speaker / End card, “Call ended” state.
+  Mute / Speaker / End card, "Call ended" state.
 - **2.4** — live activities for any app's progress/ongoing notification.
-- **2.3** — idle widgets rotate in the pill (clock / battery / alarm) and tapping
-  opens a live dashboard: time, date, battery + charging, next alarm, media and
-  timer, with quick actions.
+- **2.3** — idle widgets rotate in the pill (clock / battery / alarm); tapping
+  opened a live dashboard (time, battery, alarm, media, timer, quick actions).
+  Removed again in 3.3.
 - **2.2** — Quick Settings tile, boot auto-start, in-app shortcut settings link.
 - **2.1** — accessibility overlay: the pill can sit around the front camera and
   still be tapped (falls back to just below the bar when accessibility is off).

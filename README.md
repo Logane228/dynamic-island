@@ -7,6 +7,8 @@ interactive card without leaving the app you're in.
 This repo contains the working Android app, the single-file web prototype it
 started from, and the iOS/ActivityKit specs written along the way.
 
+**Latest release:** [v3.7](https://github.com/Logane228/dynamic-island/releases/latest) · **Repo:** <https://github.com/Logane228/dynamic-island>
+
 ![Call card](preview-music.png)
 
 ## What's inside
