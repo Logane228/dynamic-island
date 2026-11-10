@@ -14,7 +14,7 @@ import android.view.View;
  * with three iridescent sine bands drifting through it, a rim light and a
  * specular highlight. Runs at 60 fps and costs one Path per band.
  */
-public class LiquidOrbView extends View {
+public class LiquidOrbView extends View implements OrbAnim {
 
     private static final int[] BAND = {0xFF7BDFF2, 0xFFFF9FF3, 0xFFFFFFFF};
 
@@ -35,7 +35,7 @@ public class LiquidOrbView extends View {
         setFocusable(false);
     }
 
-    public void stop() {
+    @Override public void stop() {
         running = false;
     }
 

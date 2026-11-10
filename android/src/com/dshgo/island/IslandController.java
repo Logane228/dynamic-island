@@ -179,7 +179,7 @@ public class IslandController {
     private ProgressBar chargeBar;
     private ValueAnimator chargeAnim;
     private ObjectAnimator boltPulse;
-    private LiquidOrbView orbPulseView;
+    private OrbAnim orbPulseView;
     private final Runnable chargeToCompact = new Runnable() {
         @Override public void run() {
             if (mode != CHARGE_BIG) return;
@@ -496,8 +496,8 @@ public class IslandController {
         col.setGravity(Gravity.CENTER_HORIZONTAL);
 
         FrameLayout orbWrap = new FrameLayout(ctx);
-        LiquidOrbView orb = new LiquidOrbView(ctx);
-        orbWrap.addView(orb, new FrameLayout.LayoutParams(
+        OrbAnim orb = chargeStyle() == 4 ? new RibbonOrbView(ctx) : new LiquidOrbView(ctx);
+        orbWrap.addView((View) orb, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         chargePctTv = tv("0%", 22f, 0xFFFFFFFF, true);
         chargePctTv.setFontFeatureSettings("tnum");
@@ -2120,7 +2120,7 @@ public class IslandController {
             h.postDelayed(chargeHide, 3000);
             return;
         }
-        applyMode(style == 0 ? CHARGE_BIG : CHARGE_BOLT, false);
+        applyMode(style == 0 || style == 4 ? CHARGE_BIG : CHARGE_BOLT, false);
         h.postDelayed(chargeToCompact, 3200);
     }
 

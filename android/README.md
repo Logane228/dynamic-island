@@ -136,6 +136,8 @@ build, so the pill uses the 2 dp default rather than centring on a hole rect.
 
 ## Changelog
 
+- **4.1** — second charging orb: *Ribbon*, dotted particle ribbons orbiting
+  inside the glass sphere; picker now has five choices.
 - **4.0** — charging animation picker (Orb / Bolt / Pill / Off) in the settings
   screen, with instant preview.
 - **3.9** — charger plug-in plays a liquid orb: glass sphere with three

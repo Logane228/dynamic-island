@@ -38,8 +38,9 @@ started from, and the iOS/ActivityKit specs written along the way.
 - Secondary bubble for the next activity, tap to swap it into focus.
 - In-app call screen reached from the expanded card.
 - Position lock, presets, Material You accent colours.
-- **Charging animation picker** in the app: *Orb* (liquid glass), *Bolt* (icon
-  card), *Pill* (compact ⚡ + %), or *Off* — tapping a style previews it instantly.
+- **Charging animation picker** in the app: *Orb* (liquid glass, Siri wave),
+  *Ribbon* (orbiting particle ribbons), *Bolt* (icon card), *Pill* (compact ⚡ +
+  %), or *Off* — tapping a style previews it instantly.
 - Charging animation with a **liquid orb**: dark glass sphere, three iridescent
   Siri-wave bands, rim light and specular, percentage inside — plays when the
   charger is plugged in (Canvas approximation of the Metal orb shader).

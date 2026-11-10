@@ -40,7 +40,8 @@ public class MainActivity extends Activity {
     private String debugBase = "measuring status bar…";
     private android.widget.SeekBar posSeek;
     private Switch lockSwitch;
-    private final Button[] chargeBtns = new Button[4];
+    private final Button[] chargeBtns = new Button[5];
+    private static final int[] CHARGE_STYLES = {0, 4, 1, 2, 3};
     private TextView posLabel;
     private final Handler h = new Handler();
 
@@ -237,9 +238,9 @@ public class MainActivity extends Activity {
 
         LinearLayout chargeRow = new LinearLayout(this);
         chargeRow.setOrientation(LinearLayout.HORIZONTAL);
-        String[] chargeLabels = {"Orb", "Bolt", "Pill", "Off"};
+        String[] chargeLabels = {"Orb", "Ribbon", "Bolt", "Pill", "Off"};
         for (int i = 0; i < chargeLabels.length; i++) {
-            chargeBtns[i] = choiceBtn(chargeLabels[i], i);
+            chargeBtns[i] = choiceBtn(chargeLabels[i], CHARGE_STYLES[i]);
             chargeRow.addView(chargeBtns[i], weight());
         }
         LinearLayout.LayoutParams crlp = new LinearLayout.LayoutParams(
@@ -298,7 +299,7 @@ public class MainActivity extends Activity {
 
         TextView foot = new TextView(this);
         foot.setText("Unlock the position to drag the pill; locked it stays around the camera. Tap to expand it; "
-                + "long-press to come back here. Music appears by itself while something is playing.\n\nv4.0");
+                + "long-press to come back here. Music appears by itself while something is playing.\n\nv4.1");
         foot.setTextSize(11.5f);
         foot.setTextColor(0xFF6C7080);
         foot.setLineSpacing(dp(3), 1f);
@@ -396,7 +397,7 @@ public class MainActivity extends Activity {
         Button b = new Button(this);
         b.setAllCaps(false);
         b.setText(actionLabel);
-        b.setTextSize(12.5f);
+        b.setTextSize(11.5f);
         b.setTextColor(Color.WHITE);
         b.setStateListAnimator(null);
         GradientDrawable g = new GradientDrawable();
@@ -416,7 +417,7 @@ public class MainActivity extends Activity {
         Button b = new Button(this);
         b.setAllCaps(false);
         b.setText(label);
-        b.setTextSize(12.5f);
+        b.setTextSize(11.5f);
         b.setTextColor(Color.WHITE);
         b.setStateListAnimator(null);
         b.setMinHeight(0);
@@ -446,11 +447,12 @@ public class MainActivity extends Activity {
                 : getSharedPreferences("island", MODE_PRIVATE).getInt("chargeStyle", 0);
         for (int i = 0; i < chargeBtns.length; i++) {
             if (chargeBtns[i] == null) continue;
+            boolean on = CHARGE_STYLES[i] == style;
             GradientDrawable g = new GradientDrawable();
             g.setCornerRadius(dp(12));
-            g.setColor(i == style ? 0xFF0A84FF : 0x14FFFFFF);
+            g.setColor(on ? 0xFF0A84FF : 0x14FFFFFF);
             chargeBtns[i].setBackground(g);
-            chargeBtns[i].setTextColor(i == style ? Color.WHITE : 0xFFB9BECD);
+            chargeBtns[i].setTextColor(on ? Color.WHITE : 0xFFB9BECD);
         }
     }
 
