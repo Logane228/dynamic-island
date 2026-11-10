@@ -38,10 +38,10 @@ started from, and the iOS/ActivityKit specs written along the way.
 - Secondary bubble for the next activity, tap to swap it into focus.
 - In-app call screen reached from the expanded card.
 - Position lock, presets, Material You accent colours.
-- **Our own notification shade**: a full-screen panel with quick tiles (Wi-Fi,
-  Bluetooth, torch, Modes), brightness, the live notification list (with per-item
-  dismiss and *Tout effacer*), opened by swiping down from the top of the home
-  screen or from Island settings.
+- **iOS-style notification centre**: big clock + uppercase date, *Notifications*
+  header with ✕, per-app glass stacks with a count pill (tap to expand),
+  long-press to dismiss one, tap to open the app. Opened by a top swipe on the
+  home screen or from Island settings.
 - **Launcher search**: live app filter in a glass search bar; while searching the
   widget hides and the grid shows matches.
 - **Smart notification routing**: island shows *Tout / Messages / Off*, dedupes

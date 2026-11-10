@@ -1,18 +1,16 @@
 package com.dshgo.island;
 
 import android.app.Activity;
-import android.app.NotificationManager;
-import android.content.Context;
-import android.content.Intent;
+import android.app.Notification;
+import android.app.PendingIntent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
-import android.hardware.camera2.CameraManager;
 import android.os.BatteryManager;
-import android.os.Build;
 import android.os.Bundle;
 import android.service.notification.StatusBarNotification;
+import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -21,7 +19,6 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
-import android.widget.SeekBar;
 import android.widget.TextView;
 
 import java.text.SimpleDateFormat;
@@ -29,21 +26,32 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
- * Our own notification shade: quick tiles, brightness and the live notification
- * list, drawn on top of whatever is running. Opened by swiping down from the top
- * of the home screen.
+ * iOS-style Notification Center: big clock, date, grouped glass stacks with a
+ * count pill, expandable on tap, per-item and global clear.
  */
 public class ShadeActivity extends Activity {
 
     private LinearLayout list;
-    private TextView empty;
     private TextView clock;
     private TextView date;
-    private boolean torchOn = false;
+    private TextView battery;
+
+    private final List<Group> groups = new ArrayList<>();
+    private final java.util.Set<String> expanded = new java.util.HashSet<>();
+
+    private static class Group {
+        String pkg;
+        String appName;
+        Drawable icon;
+        long newest;
+        final List<StatusBarNotification> items = new ArrayList<>();
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -67,242 +75,120 @@ public class ShadeActivity extends Activity {
     }
 
     // ------------------------------------------------------------------
+    // Layout
+    // ------------------------------------------------------------------
 
     private void buildUi() {
         FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(0xE6070910);
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0xFF151833, 0xFF0A0C18, 0xFF04050A});
+        root.setBackground(bg);
         root.setOnClickListener(v -> finish());
 
-        LinearLayout panel = new LinearLayout(this);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(16), dp(40), dp(16), dp(20));
-        panel.setOnClickListener(v -> { });
+        // soft colour bloom so the glass has something to sit on
+        View bloom = new View(this);
+        android.graphics.Paint bloomPaint = new android.graphics.Paint();
+        bloomPaint.setShader(new android.graphics.RadialGradient(dp(320), dp(120), dp(420),
+                new int[]{0x557C4DFF, 0x00000000}, null, android.graphics.Shader.TileMode.CLAMP));
+        bloom.setBackground(new android.graphics.drawable.PaintDrawable());
+        root.addView(bloom, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(520)));
 
-        // header
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout column = new LinearLayout(this);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setPadding(dp(18), dp(54), dp(18), dp(14));
+        column.setOnClickListener(v -> { });
 
-        LinearLayout times = new LinearLayout(this);
-        times.setOrientation(LinearLayout.VERTICAL);
+        // top row: clock + battery
+        LinearLayout topRow = new LinearLayout(this);
+        topRow.setOrientation(LinearLayout.HORIZONTAL);
+        topRow.setGravity(Gravity.TOP);
+
         clock = new TextView(this);
         clock.setTextColor(Color.WHITE);
-        clock.setTextSize(34f);
+        clock.setTextSize(56f);
         clock.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
         clock.setIncludeFontPadding(false);
-        times.addView(clock);
-        date = new TextView(this);
-        date.setTextColor(0x99FFFFFF);
-        date.setTextSize(12f);
-        times.addView(date);
-        header.addView(times, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        LinearLayout right = new LinearLayout(this);
-        right.setOrientation(LinearLayout.VERTICAL);
-        right.setGravity(Gravity.END);
-        TextView battery = new TextView(this);
-        battery.setTextColor(0xCCFFFFFF);
-        battery.setTextSize(13f);
-        battery.setGravity(Gravity.END);
-        battery.setText(batteryText());
-        right.addView(battery);
-        TextView close = new TextView(this);
-        close.setText("✕");
-        close.setTextColor(0xE6FFFFFF);
-        close.setTextSize(12f);
-        close.setGravity(Gravity.CENTER);
-        close.setBackground(glass(0x1FFFFFFF, 16));
-        close.setOnClickListener(v -> finish());
-        LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(dp(30), dp(30));
-        closeLp.topMargin = dp(8);
-        right.addView(close, closeLp);
-        header.addView(right);
-        panel.addView(header);
-
-        // quick tiles
-        LinearLayout tiles = new LinearLayout(this);
-        tiles.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        tlp.topMargin = dp(16);
-
-        tiles.addView(tile("📶", "Wi‑Fi", true, v -> openPanel(Build.VERSION.SDK_INT >= 29
-                ? new Intent(android.provider.Settings.Panel.ACTION_WIFI)
-                : new Intent(android.provider.Settings.ACTION_WIFI_SETTINGS))), weight());
-        tiles.addView(tile("ᛒ", "Bluetooth", false, v -> openPanel(
-                new Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS))), weight());
-        final View[] flashRef = new View[1];
-        flashRef[0] = tile("🔦", "Lampe", false, v -> {
-            boolean on = toggleTorch();
-            setTileOn(flashRef[0], "🔦", "Lampe", on);
-        });
-        tiles.addView(flashRef[0], weight());
-        tiles.addView(tile("🌙", "Modes", false, v -> toggleDnd()), weight());
-        panel.addView(tiles, tlp);
-
-        // brightness
-        LinearLayout brightRow = new LinearLayout(this);
-        brightRow.setOrientation(LinearLayout.HORIZONTAL);
-        brightRow.setGravity(Gravity.CENTER_VERTICAL);
-        brightRow.setPadding(dp(14), dp(6), dp(14), dp(6));
-        brightRow.setBackground(glass(0x14FFFFFF, 22));
-        TextView sun = new TextView(this);
-        sun.setText("☀");
-        sun.setTextSize(15f);
-        sun.setTextColor(0xCCFFFFFF);
-        brightRow.addView(sun);
-        SeekBar bright = new SeekBar(this);
-        bright.setMax(255);
-        bright.setProgressTintList(android.content.res.ColorStateList.valueOf(0xFFFFFFFF));
-        bright.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(0x33FFFFFF));
-        bright.setThumbTintList(android.content.res.ColorStateList.valueOf(0xFFFFFFFF));
-        int value = 128;
-        try {
-            value = android.provider.Settings.System.getInt(getContentResolver(),
-                    android.provider.Settings.System.SCREEN_BRIGHTNESS);
-        } catch (Exception ignored) { }
-        bright.setProgress(Math.max(1, Math.min(255, value)));
-        bright.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
-                if (!fromUser) return;
-                try {
-                    android.provider.Settings.System.putInt(getContentResolver(),
-                            android.provider.Settings.System.SCREEN_BRIGHTNESS, progress);
-                } catch (Exception ignored) { }
-            }
-            @Override public void onStartTrackingTouch(SeekBar sb) { }
-            @Override public void onStopTrackingTouch(SeekBar sb) { }
-        });
-        brightRow.addView(bright, new LinearLayout.LayoutParams(
+        topRow.addView(clock, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        blp.topMargin = dp(12);
-        panel.addView(brightRow, blp);
 
-        // section label
-        TextView label = new TextView(this);
-        label.setText("Notifications");
-        label.setTextColor(0xB3FFFFFF);
-        label.setTextSize(12f);
-        label.setTypeface(Typeface.DEFAULT_BOLD);
-        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        llp.topMargin = dp(18);
-        llp.bottomMargin = dp(8);
-        panel.addView(label, llp);
+        battery = new TextView(this);
+        battery.setTextColor(0x99FFFFFF);
+        battery.setTextSize(12.5f);
+        battery.setGravity(Gravity.END);
+        topRow.addView(battery);
+        column.addView(topRow);
+
+        date = new TextView(this);
+        date.setTextColor(0xE6FFFFFF);
+        date.setTextSize(12f);
+        date.setLetterSpacing(0.06f);
+        date.setTypeface(Typeface.DEFAULT_BOLD);
+        column.addView(date);
+
+        // section header
+        LinearLayout section = new LinearLayout(this);
+        section.setOrientation(LinearLayout.HORIZONTAL);
+        section.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        slp.topMargin = dp(26);
+        slp.bottomMargin = dp(10);
+
+        TextView title = new TextView(this);
+        title.setText("Notifications");
+        title.setTextColor(0xFFFFFFFF);
+        title.setTextSize(20f);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        section.addView(title, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView clear = new TextView(this);
+        clear.setText("✕");
+        clear.setTextColor(0xCCFFFFFF);
+        clear.setTextSize(13f);
+        clear.setGravity(Gravity.CENTER);
+        clear.setBackground(glass(0x1AFFFFFF, 15));
+        clear.setOnClickListener(v -> clearAll());
+        section.addView(clear, new LinearLayout.LayoutParams(dp(30), dp(30)));
+        column.addView(section, slp);
 
         ScrollView scroll = new ScrollView(this);
         scroll.setClipToPadding(false);
+        scroll.setVerticalScrollBarEnabled(false);
         list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
         scroll.addView(list, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        panel.addView(scroll, new LinearLayout.LayoutParams(
+        column.addView(scroll, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        empty = new TextView(this);
-        empty.setText("Aucune notification");
-        empty.setTextColor(0x66FFFFFF);
-        empty.setTextSize(12.5f);
-        empty.setGravity(Gravity.CENTER);
-        empty.setPadding(0, dp(26), 0, 0);
-        list.addView(empty);
+        FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        root.addView(column, clp);
 
-        // clear all
-        TextView clear = new TextView(this);
-        clear.setText("Tout effacer");
-        clear.setTextColor(Color.WHITE);
-        clear.setTextSize(13.5f);
-        clear.setTypeface(Typeface.DEFAULT_BOLD);
-        clear.setGravity(Gravity.CENTER);
-        clear.setPadding(0, dp(14), 0, dp(14));
-        clear.setBackground(glass(0x1FFFFFFF, 26));
-        clear.setOnClickListener(v -> clearAll());
-        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        clp.topMargin = dp(12);
-        panel.addView(clear, clp);
+        // grabber
+        View grabber = new View(this);
+        GradientDrawable gg = new GradientDrawable();
+        gg.setColor(0x40FFFFFF);
+        gg.setCornerRadius(dp(3));
+        grabber.setBackground(gg);
+        FrameLayout.LayoutParams glp = new FrameLayout.LayoutParams(dp(128), dp(5));
+        glp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        glp.bottomMargin = dp(18);
+        root.addView(grabber, glp);
 
-        root.addView(panel, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(root);
     }
 
-    private View tile(String glyph, String label, boolean on, View.OnClickListener click) {
-        LinearLayout tile = new LinearLayout(this);
-        tile.setOrientation(LinearLayout.VERTICAL);
-        tile.setGravity(Gravity.CENTER);
-        tile.setPadding(dp(8), dp(10), dp(8), dp(10));
-        tile.setBackground(glass(on ? 0x3340A0FF : 0x14FFFFFF, 22));
-        tile.setOnClickListener(click);
-
-        TextView g = new TextView(this);
-        g.setText(glyph);
-        g.setTextSize(18f);
-        g.setTextColor(0xFFFFFFFF);
-        g.setGravity(Gravity.CENTER);
-        tile.addView(g);
-
-        TextView l = new TextView(this);
-        l.setText(label);
-        l.setTextSize(10.5f);
-        l.setTextColor(0xE6FFFFFF);
-        l.setGravity(Gravity.CENTER);
-        l.setMaxLines(1);
-        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        llp.topMargin = dp(6);
-        tile.addView(l, llp);
-        return tile;
-    }
-
-    private void setTileOn(View tile, String glyph, String label, boolean on) {
-        tile.setBackground(glass(on ? 0x3340A0FF : 0x14FFFFFF, 22));
-    }
-
-    private LinearLayout.LayoutParams weight() {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        lp.rightMargin = dp(8);
-        return lp;
-    }
-
-    private GradientDrawable glass(int fill, int radiusDp) {
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(fill);
-        g.setCornerRadius(dp(radiusDp));
-        g.setStroke(Math.max(1, dp(0.7f)), 0x38FFFFFF);
-        return g;
-    }
-
+    // ------------------------------------------------------------------
+    // Data
     // ------------------------------------------------------------------
 
-    private void updateClock() {
-        Date now = new Date();
-        if (clock != null) {
-            clock.setText(new SimpleDateFormat("HH:mm", Locale.getDefault()).format(now));
-        }
-        if (date != null) {
-            date.setText(new SimpleDateFormat("EEEE d MMMM", Locale.getDefault()).format(now));
-        }
-    }
-
-    private String batteryText() {
-        try {
-            BatteryManager bm = (BatteryManager) getSystemService(Context.BATTERY_SERVICE);
-            int pct = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
-            return pct + "%";
-        } catch (Exception e) {
-            return "";
-        }
-    }
-
     private void loadNotifications() {
-        if (list == null) return;
-        // keep the trailing "empty" label
         list.removeAllViews();
+        groups.clear();
 
-        List<StatusBarNotification> items = new ArrayList<>();
         NotifListener listener = NotifListener.instance;
         if (listener != null) {
             try {
@@ -312,129 +198,201 @@ public class ShadeActivity extends Activity {
                         if (sbn == null) continue;
                         if (getPackageName().equals(sbn.getPackageName())) continue;
                         if ("com.android.systemui".equals(sbn.getPackageName())) continue;
-                        if ((sbn.getNotification().flags
-                                & android.app.Notification.FLAG_GROUP_SUMMARY) != 0) continue;
-                        items.add(sbn);
+                        Notification n = sbn.getNotification();
+                        if (n == null) continue;
+                        if ((n.flags & Notification.FLAG_GROUP_SUMMARY) != 0) continue;
+                        CharSequence t = n.extras == null ? null
+                                : n.extras.getCharSequence(Notification.EXTRA_TITLE);
+                        if (t == null) continue;
+                        addToGroup(sbn);
                     }
                 }
             } catch (Exception ignored) { }
         }
-        Collections.sort(items, new Comparator<StatusBarNotification>() {
-            @Override public int compare(StatusBarNotification a, StatusBarNotification b) {
-                return Long.compare(b.getPostTime(), a.getPostTime());
-            }
+
+        Collections.sort(groups, new Comparator<Group>() {
+            @Override public int compare(Group a, Group b) { return Long.compare(b.newest, a.newest); }
         });
 
-        if (items.isEmpty()) {
-            empty.setVisibility(View.VISIBLE);
+        if (groups.isEmpty()) {
+            TextView empty = new TextView(this);
+            empty.setText("Aucune notification");
+            empty.setTextColor(0x66FFFFFF);
+            empty.setTextSize(13f);
+            empty.setGravity(Gravity.CENTER);
+            empty.setPadding(0, dp(40), 0, 0);
             list.addView(empty);
             return;
         }
-        empty.setVisibility(View.GONE);
-        for (StatusBarNotification sbn : items) {
-            list.addView(notificationCard(sbn));
+
+        for (Group group : groups) {
+            list.addView(groupView(group));
+            if (expanded.contains(group.pkg)) {
+                for (int i = 1; i < group.items.size(); i++) {
+                    View extra = cardFor(group, group.items.get(i), 0);
+                    LinearLayout holder = new LinearLayout(this);
+                    holder.setPadding(dp(10), 0, 0, 0);
+                    holder.addView(extra);
+                    LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    hlp.bottomMargin = dp(8);
+                    list.addView(holder, hlp);
+                }
+            }
         }
     }
 
-    private View notificationCard(final StatusBarNotification sbn) {
+    private void addToGroup(StatusBarNotification sbn) {
+        String pkg = sbn.getPackageName();
+        Group target = null;
+        for (Group g : groups) {
+            if (g.pkg.equals(pkg)) { target = g; break; }
+        }
+        if (target == null) {
+            target = new Group();
+            target.pkg = pkg;
+            try {
+                target.appName = getPackageManager()
+                        .getApplicationLabel(getPackageManager().getApplicationInfo(pkg, 0)).toString();
+            } catch (Exception e) {
+                target.appName = pkg;
+            }
+            try { target.icon = getPackageManager().getApplicationIcon(pkg); } catch (Exception ignored) { }
+            groups.add(target);
+        }
+        target.items.add(sbn);
+        target.newest = Math.max(target.newest, sbn.getPostTime());
+    }
+
+    // ------------------------------------------------------------------
+    // Cards
+    // ------------------------------------------------------------------
+
+    private View groupView(final Group group) {
+        boolean open = expanded.contains(group.pkg);
+        boolean stacked = group.items.size() > 1 && !open;
+
+        FrameLayout wrap = new FrameLayout(this);
+        LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        wlp.bottomMargin = dp(10);
+        wrap.setLayoutParams(wlp);
+
+        if (stacked) {
+            // two glass edges peeking under the top card
+            for (int i = 2; i >= 1; i--) {
+                View edge = new View(this);
+                edge.setBackground(glass(i == 2 ? 0x0DFFFFFF : 0x16FFFFFF, 22));
+                FrameLayout.LayoutParams elp = new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp(74));
+                elp.leftMargin = dp(6 * i);
+                elp.rightMargin = dp(6 * i);
+                elp.topMargin = dp(6 * i);
+                wrap.addView(edge, elp);
+            }
+        }
+
+        View card = cardFor(group, group.items.get(0), stacked ? group.items.size() : 0);
+        FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        wrap.addView(card, clp);
+
+        if (stacked) {
+            card.setOnClickListener(v -> {
+                expanded.add(group.pkg);
+                loadNotifications();
+            });
+        }
+
+        return wrap;
+    }
+
+    private View cardFor(final Group group, final StatusBarNotification sbn, int count) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.TOP);
-        card.setPadding(dp(12), dp(12), dp(10), dp(12));
-        card.setBackground(glass(0x14FFFFFF, 20));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = dp(8);
-        card.setLayoutParams(lp);
+        card.setPadding(dp(14), dp(14), dp(12), dp(14));
+        card.setBackground(glass(0x26FFFFFF, 22));
+        card.setElevation(dp(6));
 
-        ImageView icon = new ImageView(this);
-        Drawable d = null;
-        try { d = getPackageManager().getApplicationIcon(sbn.getPackageName()); } catch (Exception ignored) { }
-        if (d != null) {
-            icon.setImageDrawable(d);
-            card.addView(icon, new LinearLayout.LayoutParams(dp(34), dp(34)));
+        if (group.icon != null) {
+            ImageView icon = new ImageView(this);
+            icon.setImageDrawable(group.icon);
+            LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(dp(38), dp(38));
+            ilp.rightMargin = dp(12);
+            card.addView(icon, ilp);
         }
 
         LinearLayout texts = new LinearLayout(this);
         texts.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        tlp.leftMargin = dp(12);
-
-        String appName;
-        try {
-            appName = getPackageManager()
-                    .getApplicationLabel(getPackageManager().getApplicationInfo(sbn.getPackageName(), 0))
-                    .toString();
-        } catch (Exception e) {
-            appName = sbn.getPackageName();
-        }
 
         TextView meta = new TextView(this);
-        meta.setText(appName + " · " + relativeTime(sbn.getPostTime()));
-        meta.setTextColor(0x88FFFFFF);
+        meta.setText(group.appName + "  ·  " + relativeTime(sbn.getPostTime()));
+        meta.setTextColor(0x8CFFFFFF);
         meta.setTextSize(10.5f);
         texts.addView(meta);
 
-        Bundle ex = sbn.getNotification().extras;
-        CharSequence title = ex == null ? null : ex.getCharSequence(android.app.Notification.EXTRA_TITLE);
-        CharSequence text = ex == null ? null : ex.getCharSequence(android.app.Notification.EXTRA_TEXT);
+        Notification n = sbn.getNotification();
+        CharSequence title = n.extras == null ? null : n.extras.getCharSequence(Notification.EXTRA_TITLE);
+        CharSequence text = n.extras == null ? null : n.extras.getCharSequence(Notification.EXTRA_TEXT);
         if (title != null) {
             TextView t = new TextView(this);
             t.setText(title);
             t.setTextColor(Color.WHITE);
-            t.setTextSize(13f);
+            t.setTextSize(14.5f);
             t.setTypeface(Typeface.DEFAULT_BOLD);
             t.setMaxLines(1);
-            t.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            texts.addView(t);
+            t.setEllipsize(TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = dp(3);
+            texts.addView(t, lp);
         }
         if (text != null) {
             TextView t = new TextView(this);
             t.setText(text);
-            t.setTextColor(0xCCFFFFFF);
-            t.setTextSize(12f);
+            t.setTextColor(0xC7FFFFFF);
+            t.setTextSize(13f);
             t.setMaxLines(2);
-            t.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            texts.addView(t);
+            t.setEllipsize(TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = dp(2);
+            texts.addView(t, lp);
         }
         card.addView(texts, tlp);
 
-        TextView dismiss = new TextView(this);
-        dismiss.setText("×");
-        dismiss.setTextColor(0xAAFFFFFF);
-        dismiss.setTextSize(16f);
-        dismiss.setGravity(Gravity.CENTER);
-        dismiss.setPadding(dp(8), 0, dp(4), 0);
-        dismiss.setOnClickListener(v -> {
+        if (count > 1) {
+            TextView badge = new TextView(this);
+            badge.setText(String.valueOf(count));
+            badge.setTextColor(Color.WHITE);
+            badge.setTextSize(11f);
+            badge.setGravity(Gravity.CENTER);
+            badge.setBackground(glass(0x33FFFFFF, 12));
+            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(dp(24), dp(24));
+            blp.leftMargin = dp(8);
+            card.addView(badge, blp);
+        }
+
+        card.setOnClickListener(v -> {
+            PendingIntent pi = n.contentIntent;
+            if (pi != null) {
+                try { pi.send(); } catch (Exception ignored) { }
+            }
+            finish();
+        });
+
+        card.setOnLongClickListener(v -> {
             NotifListener l = NotifListener.instance;
             if (l != null) {
                 try { l.cancelNotification(sbn.getKey()); } catch (Exception ignored) { }
             }
             loadNotifications();
-        });
-        card.addView(dismiss);
-
-        card.setOnClickListener(v -> {
-            android.app.PendingIntent pi = sbn.getNotification().contentIntent;
-            if (pi != null) {
-                try {
-                    pi.send();
-                } catch (Exception ignored) { }
-            }
-            finish();
+            return true;
         });
         return card;
-    }
-
-    private String relativeTime(long when) {
-        long diff = Math.max(0, System.currentTimeMillis() - when);
-        long minutes = diff / 60000;
-        if (minutes < 1) return "à l'instant";
-        if (minutes < 60) return "il y a " + minutes + " min";
-        long hours = minutes / 60;
-        if (hours < 24) return "il y a " + hours + " h";
-        return new SimpleDateFormat("d MMM", Locale.getDefault()).format(new Date(when));
     }
 
     private void clearAll() {
@@ -443,8 +401,7 @@ public class ShadeActivity extends Activity {
             try {
                 for (StatusBarNotification sbn : l.getActiveNotifications()) {
                     if (getPackageName().equals(sbn.getPackageName())) continue;
-                    if ((sbn.getNotification().flags
-                            & android.app.Notification.FLAG_ONGOING_EVENT) != 0) continue;
+                    if ((sbn.getNotification().flags & Notification.FLAG_ONGOING_EVENT) != 0) continue;
                     try { l.cancelNotification(sbn.getKey()); } catch (Exception ignored) { }
                 }
             } catch (Exception ignored) { }
@@ -452,40 +409,35 @@ public class ShadeActivity extends Activity {
         loadNotifications();
     }
 
-    private void openPanel(Intent intent) {
+    // ------------------------------------------------------------------
+
+    private void updateClock() {
+        Date now = new Date();
+        clock.setText(new SimpleDateFormat("HH:mm", Locale.getDefault()).format(now));
+        date.setText(new SimpleDateFormat("EEEE d MMMM", Locale.getDefault())
+                .format(now).toUpperCase(Locale.getDefault()));
         try {
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(intent);
+            BatteryManager bm = (BatteryManager) getSystemService(BATTERY_SERVICE);
+            battery.setText(bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) + " %");
         } catch (Exception ignored) { }
     }
 
-    private boolean toggleTorch() {
-        try {
-            CameraManager cm = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
-            if (cm == null) return torchOn;
-            torchOn = !torchOn;
-            cm.setTorchMode(cm.getCameraIdList()[0], torchOn);
-            return torchOn;
-        } catch (Exception e) {
-            torchOn = false;
-            return false;
-        }
+    private String relativeTime(long when) {
+        long diff = Math.max(0, System.currentTimeMillis() - when);
+        long minutes = diff / 60000;
+        if (minutes < 1) return "maintenant";
+        if (minutes < 60) return minutes + " min";
+        long hours = minutes / 60;
+        if (hours < 24) return hours + " h";
+        return new SimpleDateFormat("d MMM", Locale.getDefault()).format(new Date(when));
     }
 
-    private void toggleDnd() {
-        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        if (nm == null) return;
-        try {
-            boolean priority = nm.getCurrentInterruptionFilter() != NotificationManager.INTERRUPTION_FILTER_ALL;
-            nm.setInterruptionFilter(priority
-                    ? NotificationManager.INTERRUPTION_FILTER_ALL
-                    : NotificationManager.INTERRUPTION_FILTER_PRIORITY);
-        } catch (SecurityException e) {
-            try {
-                startActivity(new Intent(android.provider.Settings
-                        .ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
-            } catch (Exception ignored) { }
-        }
+    private GradientDrawable glass(int fill, int radiusDp) {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(fill);
+        g.setCornerRadius(dp(radiusDp));
+        g.setStroke(Math.max(1, dp(0.6f)), 0x30FFFFFF);
+        return g;
     }
 
     private int dp(float value) {

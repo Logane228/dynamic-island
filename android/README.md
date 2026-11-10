@@ -136,6 +136,11 @@ build, so the pill uses the 2 dp default rather than centring on a hole rect.
 
 ## Changelog
 
+- **4.14** — notification centre restyled to iOS: 56 sp light clock, uppercase
+  date, grouped glass stacks with count badges, expandable, gradient backdrop.
+- **4.13** — ongoing notifications were being filtered out (empty list); they are
+  shown again.
+- **4.12** — first iOS-shaped shade: grouped stacks, count pill, ✕ clear all.
 - **4.11** — shade polish: vertical quick tiles, ✕ close button.
 - **4.10** — our own notification shade: quick tiles, brightness, live list from
   `NotificationListenerService`, per-item dismiss, clear-all; opened by a top
