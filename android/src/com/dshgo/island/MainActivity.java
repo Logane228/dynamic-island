@@ -43,6 +43,7 @@ public class MainActivity extends Activity {
     private android.widget.SeekBar posSeek;
     private Switch lockSwitch;
     private final Button[] chargeBtns = new Button[5];
+    private final Button[] notifBtns = new Button[3];
     private static final int[] CHARGE_STYLES = {0, 4, 1, 2, 3};
     private TextView posLabel;
     private final Handler h = new Handler();
@@ -276,6 +277,43 @@ public class MainActivity extends Activity {
         plp.topMargin = dp(8);
         root.addView(previewBtn, plp);
 
+        LinearLayout notifCard = card();
+        notifCard.setPadding(dp(16), dp(12), dp(16), dp(14));
+        TextView notifTitle = new TextView(this);
+        notifTitle.setText("Island notifications");
+        notifTitle.setTextSize(14f);
+        notifTitle.setTextColor(Color.WHITE);
+        notifTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        notifCard.addView(notifTitle);
+
+        LinearLayout notifRow = new LinearLayout(this);
+        notifRow.setOrientation(LinearLayout.HORIZONTAL);
+        String[] notifLabels = {"Tout", "Messages", "Off"};
+        for (int i = 0; i < notifLabels.length; i++) {
+            notifBtns[i] = choiceBtn(notifLabels[i], 0);
+            final int value = i;
+            notifBtns[i].setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    getSharedPreferences("island", MODE_PRIVATE).edit()
+                            .putInt("notifScope", value).apply();
+                    if (IslandService.controller != null) {
+                        IslandService.controller.notifyScopeChanged();
+                    }
+                    refreshNotifScope();
+                }
+            });
+            notifRow.addView(notifBtns[i], weight());
+        }
+        LinearLayout.LayoutParams nrlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        nrlp.topMargin = dp(8);
+        notifCard.addView(notifRow, nrlp);
+
+        LinearLayout.LayoutParams nclp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        nclp.topMargin = dp(12);
+        root.addView(notifCard, nclp);
+
         LinearLayout chargeCard = card();
         chargeCard.setPadding(dp(16), dp(12), dp(16), dp(14));
         TextView chargeTitle = new TextView(this);
@@ -348,7 +386,7 @@ public class MainActivity extends Activity {
 
         TextView foot = new TextView(this);
         foot.setText("Unlock the position to drag the pill; locked it stays around the camera. Tap to expand it; "
-                + "long-press to come back here. Music appears by itself while something is playing.\n\nv4.7");
+                + "long-press to come back here. Music appears by itself while something is playing.\n\nv4.9");
         foot.setTextSize(11.5f);
         foot.setTextColor(0xFF6C7080);
         foot.setLineSpacing(dp(3), 1f);
@@ -485,9 +523,22 @@ public class MainActivity extends Activity {
                     IslandService.controller.demo("charge");
                 }
                 refreshChargeStyle();
+        refreshNotifScope();
             }
         });
         return b;
+    }
+
+    private void refreshNotifScope() {
+        int scope = getSharedPreferences("island", MODE_PRIVATE).getInt("notifScope", 0);
+        for (int i = 0; i < notifBtns.length; i++) {
+            if (notifBtns[i] == null) continue;
+            GradientDrawable g = new GradientDrawable();
+            g.setCornerRadius(dp(12));
+            g.setColor(i == scope ? 0xFF0A84FF : 0x14FFFFFF);
+            notifBtns[i].setBackground(g);
+            notifBtns[i].setTextColor(i == scope ? Color.WHITE : 0xFFB9BECD);
+        }
     }
 
     private void refreshChargeStyle() {

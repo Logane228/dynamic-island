@@ -136,6 +136,13 @@ build, so the pill uses the 2 dp default rather than centring on a hole rect.
 
 ## Changelog
 
+- **4.9** — search bar no longer collapses the home screen when the keyboard
+  opens (`adjustNothing`), `Aa` moved clear of the field, widget hides while
+  searching.
+- **4.8** — launcher search bar; quick-call favourite resolved from WhatsApp
+  notification senders → contact number, call-log fallback, contact picker
+  override; island notification scope (Tout / Messages / Off) with dedupe and
+  no notifications over a running call.
 - **4.7** — launcher layout fixes: page dots above the dock, `Aa` toggle moved to
   the top-right, dock resized so labels fit.
 - **4.6** — Liquid Glass launcher: parallax `WallpaperView`, `GlassPager` (two

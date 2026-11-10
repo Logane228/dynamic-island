@@ -1119,8 +1119,22 @@ public class IslandController {
 
     /* --------------------------------------------------------- notifications */
 
+    private String lastNotifKey = "";
+    private long lastNotifAt = 0L;
+
+    private boolean isMessageNotification(Notification n) {
+        if (Notification.CATEGORY_MESSAGE.equals(n.category)) return true;
+        Bundle ex = n.extras;
+        return ex != null && (ex.containsKey(Notification.EXTRA_MESSAGES)
+                || ex.containsKey("android.messagingStyleUser"));
+    }
+
     public void onNotification(StatusBarNotification sbn) {
         try {
+            // 0 = everything, 1 = messaging only, 2 = off
+            int scope = prefs().getInt("notifScope", 0);
+            if (scope == 2) return;
+
             String pkg = sbn.getPackageName();
             if (pkg == null || pkg.equals(ctx.getPackageName())) return;
             if (pkg.equals("android") || pkg.equals("com.android.systemui")) return;
@@ -1131,6 +1145,15 @@ public class IslandController {
             if (ex == null || ex.containsKey(Notification.EXTRA_MEDIA_SESSION)) return;
             CharSequence title = ex.getCharSequence(Notification.EXTRA_TITLE);
             if (title == null || title.length() == 0) return;
+            if (scope == 1 && !isMessageNotification(n)) return;
+            if (callActive) return; // never cover a running call
+
+            CharSequence body = ex.getCharSequence(Notification.EXTRA_TEXT);
+            String dedupeKey = pkg + "|" + title + "|" + body;
+            long now = SystemClock.uptimeMillis();
+            if (dedupeKey.equals(lastNotifKey) && now - lastNotifAt < 8000L) return;
+            lastNotifKey = dedupeKey;
+            lastNotifAt = now;
 
             if (isLiveNotification(n)) {
                 handleLive(sbn, n, title);
@@ -1147,6 +1170,16 @@ public class IslandController {
                 notifIcon = null;
             }
             notifIntent = n.contentIntent;
+            if (pkg.startsWith("com.whatsapp")) {
+                // WhatsApp exposes no call log, but 1:1 notifications carry the
+                // sender's name — count them as the "frequently contacted" signal.
+                String sender = title.toString();
+                if (sender.length() <= 40) {
+                    SharedPreferences p = prefs();
+                    String key = "wa:" + sender;
+                    p.edit().putInt(key, p.getInt(key, 0) + 1).apply();
+                }
+            }
             showTransient(NOTIF);
         } catch (Exception ignored) { }
     }
@@ -1467,6 +1500,11 @@ public class IslandController {
         } else if (mode == NONE || mode == MEDIA || mode == TIMER) {
             applyMode(LIVE, false);
         }
+    }
+
+    /** Called when the notification scope changed in settings. */
+    public void notifyScopeChanged() {
+        if (prefs().getInt("notifScope", 0) == 2 && mode == NOTIF) revert();
     }
 
     public void onNotificationRemoved(String key) {

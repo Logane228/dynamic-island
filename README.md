@@ -38,6 +38,12 @@ started from, and the iOS/ActivityKit specs written along the way.
 - Secondary bubble for the next activity, tap to swap it into focus.
 - In-app call screen reached from the expanded card.
 - Position lock, presets, Material You accent colours.
+- **Launcher search**: live app filter in a glass search bar; while searching the
+  widget hides and the grid shows matches.
+- **Smart notification routing**: island shows *Tout / Messages / Off*, dedupes
+  repeats, never covers a running call; WhatsApp senders are counted to pick the
+  "frequently contacted" favourite for the quick-call widget (call-log fallback,
+  contact-picker override).
 - **Liquid-glass home screen**: the app registers `CATEGORY_HOME` and can be the
   default launcher — parallax mesh wallpaper, two swipeable pages, glass quick-action
   widget (call / repo / Wi-Fi), 4-column app grid, dock, `Aa` grayscale toggle,

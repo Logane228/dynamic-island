@@ -7,6 +7,13 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.database.Cursor;
+import android.provider.ContactsContract;
+import android.provider.CallLog;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
@@ -14,6 +21,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.view.inputmethod.EditorInfo;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -25,6 +33,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
 import android.widget.FrameLayout;
+import android.widget.EditText;
 import android.widget.GridView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -56,6 +65,13 @@ public class LauncherActivity extends Activity {
     private TextView clock;
     private TextView date;
 
+    private EditText search;
+    private final List<AppEntry> allApps = new ArrayList<>();
+    private String favoriteName;
+    private String favoriteNumber;
+    private View widgetCard;
+    private TextView favTitle;
+    private TextView favSub;
     private GridView grid0;
     private GridView grid1;
     private AppAdapter adapter0;
@@ -153,6 +169,42 @@ public class LauncherActivity extends Activity {
         hlp.gravity = Gravity.TOP | Gravity.START;
         root.addView(header, hlp);
 
+        LinearLayout searchWrap = new LinearLayout(this);
+        searchWrap.setOrientation(LinearLayout.HORIZONTAL);
+        searchWrap.setGravity(Gravity.CENTER_VERTICAL);
+        searchWrap.setPadding(dp(14), 0, dp(14), 0);
+        searchWrap.setBackground(glass(0x1FFFFFFF, 22));
+
+        TextView magnifier = new TextView(this);
+        magnifier.setText("🔍");
+        magnifier.setTextSize(13f);
+        searchWrap.addView(magnifier);
+
+        search = new EditText(this);
+        search.setHint("Rechercher");
+        search.setHintTextColor(0x88FFFFFF);
+        search.setTextColor(Color.WHITE);
+        search.setTextSize(14f);
+        search.setSingleLine(true);
+        search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
+        search.setBackgroundColor(Color.TRANSPARENT);
+        search.setPadding(dp(10), 0, 0, 0);
+        search.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void afterTextChanged(Editable e) { filterApps(e.toString()); }
+        });
+        searchWrap.addView(search, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+
+        FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
+        slp.gravity = Gravity.TOP;
+        slp.leftMargin = dp(20);
+        slp.rightMargin = dp(20);
+        slp.topMargin = dp(104);
+        root.addView(searchWrap, slp);
+
         // appearance toggle
         TextView appearance = new TextView(this);
         appearance.setText("Aa");
@@ -166,7 +218,7 @@ public class LauncherActivity extends Activity {
         FrameLayout.LayoutParams alp = new FrameLayout.LayoutParams(dp(46), dp(46));
         alp.gravity = Gravity.END | Gravity.TOP;
         alp.rightMargin = dp(18);
-        alp.topMargin = dp(96);
+        alp.topMargin = dp(44);
         root.addView(appearance, alp);
 
         // dots
@@ -252,12 +304,13 @@ public class LauncherActivity extends Activity {
     private View buildPage0() {
         LinearLayout column = new LinearLayout(this);
         column.setOrientation(LinearLayout.VERTICAL);
-        column.setPadding(dp(20), dp(120), dp(20), dp(150));
+        column.setPadding(dp(20), dp(172), dp(20), dp(150));
 
+        widgetCard = buildWidget();
         LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         wlp.bottomMargin = dp(14);
-        column.addView(buildWidget(), wlp);
+        column.addView(widgetCard, wlp);
 
         grid0 = buildGrid(column);
         adapter0 = new AppAdapter(pageApps0);
@@ -268,7 +321,7 @@ public class LauncherActivity extends Activity {
     private View buildPage1() {
         LinearLayout column = new LinearLayout(this);
         column.setOrientation(LinearLayout.VERTICAL);
-        column.setPadding(dp(20), dp(120), dp(20), dp(150));
+        column.setPadding(dp(20), dp(172), dp(20), dp(150));
 
         grid1 = buildGrid(column);
         adapter1 = new AppAdapter(pageApps1);
@@ -324,8 +377,21 @@ public class LauncherActivity extends Activity {
         tlp.bottomMargin = dp(12);
         card.addView(title, tlp);
 
-        LinearLayout call = quickRow("A", "Appeler Alex", "Mobile", true);
-        call.setOnClickListener(v -> launchIntent(dialIntent()));
+        resolveFavorite();
+        LinearLayout call = quickRow("★",
+                favoriteName != null ? "Appeler " + favoriteName : "Choisir un favori",
+                favoriteNumber != null ? favoriteNumber : "WhatsApp · contact fréquent",
+                true);
+        favTitle = (TextView) ((LinearLayout) call.getChildAt(1)).getChildAt(0);
+        favSub = (TextView) ((LinearLayout) call.getChildAt(1)).getChildAt(1);
+        call.setOnClickListener(v -> {
+            if (favoriteNumber != null && !favoriteNumber.isEmpty()) {
+                launchIntent(new Intent(Intent.ACTION_DIAL,
+                        Uri.parse("tel:" + Uri.encode(favoriteNumber))));
+            } else {
+                pickFavorite();
+            }
+        });
         card.addView(call);
 
         LinearLayout tiles = new LinearLayout(this);
@@ -452,6 +518,7 @@ public class LauncherActivity extends Activity {
 
         pageApps0.clear();
         pageApps1.clear();
+        allApps.clear();
         for (int i = 0; i < found.size(); i++) {
             ResolveInfo info = found.get(i);
             AppEntry entry = new AppEntry();
@@ -462,11 +529,165 @@ public class LauncherActivity extends Activity {
                     .addCategory(Intent.CATEGORY_LAUNCHER)
                     .setComponent(new ComponentName(entry.pkg, info.activityInfo.name))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            allApps.add(entry);
             if (i < PAGE_ONE_COUNT) pageApps0.add(entry);
             else pageApps1.add(entry);
         }
         if (adapter0 != null) adapter0.notifyDataSetChanged();
         if (adapter1 != null) adapter1.notifyDataSetChanged();
+    }
+
+    private void filterApps(String query) {
+        String q = query == null ? "" : query.trim().toLowerCase(Locale.getDefault());
+        if (widgetCard != null) widgetCard.setVisibility(q.isEmpty() ? View.VISIBLE : View.GONE);
+        pageApps0.clear();
+        pageApps1.clear();
+        if (q.isEmpty()) {
+            for (int i = 0; i < allApps.size(); i++) {
+                if (i < PAGE_ONE_COUNT) pageApps0.add(allApps.get(i));
+                else pageApps1.add(allApps.get(i));
+            }
+        } else {
+            for (AppEntry e : allApps) {
+                if (e.label.toLowerCase(Locale.getDefault()).contains(q)) pageApps0.add(e);
+            }
+        }
+        if (adapter0 != null) adapter0.notifyDataSetChanged();
+        if (adapter1 != null) adapter1.notifyDataSetChanged();
+        if (pager.getPage() != 0) pager.setPage(0, true);
+    }
+
+    /** Most-dialled contact from the call log, else the one saved by the picker. */
+    private void resolveFavorite() {
+        favoriteName = prefs().getString("favName", null);
+        favoriteNumber = prefs().getString("favNumber", null);
+        if (favoriteNumber != null && !favoriteNumber.isEmpty()) return;
+
+        // 1) highest-count WhatsApp sender, resolved to a number via contacts
+        if (checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
+            String topSender = null;
+            int topCount = 0;
+            for (java.util.Map.Entry<String, ?> e : prefs().getAll().entrySet()) {
+                if (!e.getKey().startsWith("wa:")) continue;
+                if (!(e.getValue() instanceof Integer)) continue;
+                int count = (Integer) e.getValue();
+                if (count > topCount) { topCount = count; topSender = e.getKey().substring(3); }
+            }
+            if (topSender != null && topCount >= 2 && resolveContactNumber(topSender)) return;
+        }
+
+        // 2) fall back to the most-dialled number in the system call log
+        if (checkSelfPermission(Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) return;
+
+        Cursor c = null;
+        try {
+            c = getContentResolver().query(CallLog.Calls.CONTENT_URI,
+                    new String[]{CallLog.Calls.NUMBER, CallLog.Calls.CACHED_NAME},
+                    null, null, CallLog.Calls.DATE + " DESC LIMIT 200");
+            if (c == null) return;
+            java.util.HashMap<String, Integer> counts = new java.util.HashMap<>();
+            java.util.HashMap<String, String> names = new java.util.HashMap<>();
+            while (c.moveToNext()) {
+                String number = c.getString(0);
+                if (number == null || number.isEmpty()) continue;
+                counts.put(number, counts.getOrDefault(number, 0) + 1);
+                String name = c.getString(1);
+                if (name != null && !name.isEmpty()) names.put(number, name);
+            }
+            String best = null;
+            int bestCount = 0;
+            for (java.util.Map.Entry<String, Integer> e : counts.entrySet()) {
+                if (e.getValue() > bestCount) { bestCount = e.getValue(); best = e.getKey(); }
+            }
+            if (best != null) {
+                favoriteNumber = best;
+                favoriteName = names.containsKey(best) ? names.get(best) : best;
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (c != null) c.close();
+        }
+    }
+
+    private boolean resolveContactNumber(String displayName) {
+        Cursor c = null;
+        try {
+            c = getContentResolver().query(
+                    ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                    new String[]{ContactsContract.CommonDataKinds.Phone.NUMBER},
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " LIKE ?",
+                    new String[]{displayName}, null);
+            if (c != null && c.moveToFirst()) {
+                String number = c.getString(0);
+                if (number != null && !number.isEmpty()) {
+                    favoriteName = displayName;
+                    favoriteNumber = number;
+                    return true;
+                }
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (c != null) c.close();
+        }
+        return false;
+    }
+
+    private void pickFavorite() {
+        requestPermissions(new String[]{Manifest.permission.READ_CONTACTS,
+                Manifest.permission.READ_CALL_LOG}, 7);
+        try {
+            startActivityForResult(new Intent(Intent.ACTION_PICK,
+                    ContactsContract.Contacts.CONTENT_URI), 8);
+        } catch (Exception ignored) { }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != 8 || resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        try {
+            Cursor c = getContentResolver().query(data.getData(),
+                    new String[]{ContactsContract.Contacts._ID,
+                            ContactsContract.Contacts.DISPLAY_NAME},
+                    null, null, null);
+            if (c != null && c.moveToFirst()) {
+                String id = c.getString(0);
+                String name = c.getString(1);
+                c.close();
+                Cursor p = getContentResolver().query(
+                        ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                        new String[]{ContactsContract.CommonDataKinds.Phone.NUMBER},
+                        ContactsContract.CommonDataKinds.Phone.CONTACT_ID + "=?",
+                        new String[]{id}, null);
+                if (p != null && p.moveToFirst()) {
+                    String number = p.getString(0);
+                    p.close();
+                    favoriteName = name;
+                    favoriteNumber = number;
+                    prefs().edit().putString("favName", name)
+                            .putString("favNumber", number).apply();
+                    refreshFavoriteUi();
+                }
+            }
+        } catch (Exception ignored) { }
+    }
+
+    private void refreshFavoriteUi() {
+        if (favTitle != null) {
+            favTitle.setText(favoriteName != null ? "Appeler " + favoriteName : "Choisir un favori");
+        }
+        if (favSub != null) {
+            favSub.setText(favoriteNumber != null ? favoriteNumber : "WhatsApp · contact fréquent");
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(requestCode, permissions, results);
+        if (requestCode == 7) {
+            resolveFavorite();
+            refreshFavoriteUi();
+        }
     }
 
     private void launchIntent(Intent intent) {
