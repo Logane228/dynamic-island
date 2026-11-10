@@ -79,6 +79,7 @@ public class IslandController {
     private Context winCtx;
     private int winType = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
     private FrameLayout root;
+    private RgbRingView rgbRing;
     private LinearLayout compact;
     private LinearLayout expanded;
     private GradientDrawable bg;
@@ -229,6 +230,7 @@ public class IslandController {
         }
         try { ctx.unregisterReceiver(batteryRx); } catch (Exception ignored) {}
         hideBubble();
+        if (rgbRing != null) rgbRing.stop();
         if (root != null) {
             try { wm.removeView(root); } catch (Exception ignored) {}
             root = null;
@@ -261,6 +263,11 @@ public class IslandController {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         root.addView(expanded, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        rgbRing = new RgbRingView(ctx);
+        root.addView(rgbRing, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        rgbRing.setRadius(dp(18));
 
         lp = new WindowManager.LayoutParams(dp(126), dp(36),
                 winType,
@@ -444,6 +451,7 @@ public class IslandController {
                 lp.width = Math.max(1, (int) (fromW + (targetW - fromW) * t));
                 lp.height = Math.max(1, (int) (fromH + (targetH - fromH) * t));
                 bg.setCornerRadius(fromR + (radius - fromR) * t);
+                if (rgbRing != null) rgbRing.setRadius(fromR + (radius - fromR) * t);
                 try { wm.updateViewLayout(root, lp); } catch (Exception ignored) {}
                 root.invalidate();
             }
@@ -1430,6 +1438,7 @@ public class IslandController {
         int prevMode = mode;
         boolean prevOpen = open;
         hideBubble();
+        if (rgbRing != null) rgbRing.stop();
         if (root != null) {
             try { wm.removeView(root); } catch (Exception ignored) {}
             root = null;

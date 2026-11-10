@@ -36,6 +36,8 @@ started from, and the iOS/ActivityKit specs written along the way.
 - Secondary bubble for the next activity, tap to swap it into focus.
 - In-app call screen reached from the expanded card.
 - Position lock, presets, Material You accent colours.
+- Animated RGB ring around the capsule border (thin sweep gradient, 30 fps,
+  corner radius follows the morph).
 
 **Build**
 

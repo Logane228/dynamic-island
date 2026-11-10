@@ -140,6 +140,8 @@ build, so the pill uses the 2 dp default rather than centring on a hole rect.
   *Lock position* switch on by default so the pill cannot drift, presets re-lock.
 - **2.9** — tap detection reworked around the system touch slop; in-app tap/swipe
   counters for diagnostics.
+- **3.7** — animated RGB ring drawn on the capsule border (SweepGradient, follows
+  the corner-radius morph, never consumes touches).
 - **2.7** — full-screen call screen reached by a single tap on the expanded call
   card; shared mute / route / end state with the island.
 - **2.6** — swipe paging between concurrent activities, multi-task dots,
