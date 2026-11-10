@@ -30,6 +30,8 @@ import android.media.session.MediaController;
 import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
 import android.os.BatteryManager;
+import android.hardware.camera2.CameraManager;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -55,6 +57,7 @@ import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.SeekBar;
 import android.widget.TextView;
 
 import java.text.SimpleDateFormat;
@@ -69,7 +72,7 @@ import java.util.Locale;
 public class IslandController {
 
     private static final int NONE = 0, MEDIA = 1, NOTIF = 2, CHARGE = 3, TIMER = 4, DONE = 5;
-    private static final int CHARGE_BIG = 6, QUICK = 7, DASH = 8, LIVE = 9, CALL = 10, CALL_ENDED = 11, CHARGE_BOLT = 12;
+    private static final int CHARGE_BIG = 6, QUICK = 7, DASH = 8, LIVE = 9, CALL = 10, CALL_ENDED = 11, CHARGE_BOLT = 12, CTRL = 14;
     private static final int POS_VERSION = 6;
 
     private final Context ctx;
@@ -401,6 +404,10 @@ public class IslandController {
                 w = dp(286); hgt = dp(140); radius = dp(36);
                 buildChargeBolt();
                 break;
+            case CTRL:
+                w = dp(324); hgt = dp(300); radius = dp(38);
+                buildControlCenter();
+                break;
             case QUICK:
                 w = dp(300); hgt = dp(126); radius = dp(34);
                 buildQuick();
@@ -590,6 +597,176 @@ public class IslandController {
             }
         });
         chargeAnim.start();
+    }
+
+    private void buildControlCenter() {
+        LinearLayout col = new LinearLayout(ctx);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(dp(2), 0, dp(2), 0);
+
+        TextView title = tv("Control Center", 12f, 0x99FFFFFF, true);
+        col.addView(title);
+
+        LinearLayout row = new LinearLayout(ctx);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rlp.topMargin = dp(10);
+
+        final Button flash = ccButton("Flash");
+        final Button wifi = ccButton("Wi-Fi");
+        final Button bt = ccButton("Bluetooth");
+        row.addView(flash, ccWeight());
+        row.addView(wifi, ccWeight());
+        row.addView(bt, ccWeight());
+        col.addView(row, rlp);
+
+        flash.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                boolean on = toggleTorch();
+                flash.setText(on ? "Flash on" : "Flash");
+                flash.setBackgroundColor(on ? 0xFF0A84FF : 0x18FFFFFF);
+                haptic();
+            }
+        });
+        wifi.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { openPanel(android.provider.Settings.Panel.ACTION_WIFI); }
+        });
+        bt.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                try {
+                    Intent i = new Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS);
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    ctx.startActivity(i);
+                } catch (Exception ignored) {}
+            }
+        });
+
+        final SeekBar bright = ccSlider();
+        bright.setMax(255);
+        final int maxBright = 255;
+        int bval = 128;
+        try {
+            bval = android.provider.Settings.System.getInt(ctx.getContentResolver(),
+                    android.provider.Settings.System.SCREEN_BRIGHTNESS);
+        } catch (Exception ignored) {}
+        bright.setProgress(Math.max(1, Math.min(maxBright, bval)));
+        bright.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar sb, int value, boolean fromUser) {
+                if (!fromUser) return;
+                try {
+                    android.provider.Settings.System.putInt(ctx.getContentResolver(),
+                            android.provider.Settings.System.SCREEN_BRIGHTNESS, value);
+                } catch (Exception ignored) {}
+            }
+            @Override public void onStartTrackingTouch(SeekBar sb) {}
+            @Override public void onStopTrackingTouch(SeekBar sb) {}
+        });
+        col.addView(sliderRow("☀", bright), sliderLp());
+
+        final SeekBar vol = ccSlider();
+        final AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+        int vmax = 15;
+        if (am != null) {
+            vmax = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+            vol.setMax(vmax);
+            vol.setProgress(am.getStreamVolume(AudioManager.STREAM_MUSIC));
+        }
+        final int vMax = vmax;
+        vol.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar sb, int value, boolean fromUser) {
+                if (!fromUser || am == null) return;
+                try { am.setStreamVolume(AudioManager.STREAM_MUSIC, value, 0); } catch (Exception ignored) {}
+            }
+            @Override public void onStartTrackingTouch(SeekBar sb) {}
+            @Override public void onStopTrackingTouch(SeekBar sb) {}
+        });
+        col.addView(sliderRow("🔊", vol), sliderLp());
+
+        expanded.addView(col, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    private LinearLayout.LayoutParams ccWeight() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        lp.rightMargin = dp(6);
+        return lp;
+    }
+
+    private Button ccButton(String label) {
+        Button b = new Button(ctx);
+        b.setAllCaps(false);
+        b.setText(label);
+        b.setTextSize(11.5f);
+        b.setTextColor(0xFFFFFFFF);
+        b.setStateListAnimator(null);
+        b.setMinHeight(0);
+        b.setMinimumHeight(0);
+        b.setPadding(0, dp(10), 0, dp(10));
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(0x18FFFFFF);
+        g.setCornerRadius(dp(14));
+        b.setBackground(g);
+        return b;
+    }
+
+    private SeekBar ccSlider() {
+        SeekBar sb = new SeekBar(ctx);
+        sb.setProgressTintList(ColorStateList.valueOf(accent()));
+        sb.setProgressBackgroundTintList(ColorStateList.valueOf(0x33FFFFFF));
+        sb.setThumbTintList(ColorStateList.valueOf(0xFFFFFFFF));
+        return sb;
+    }
+
+    private LinearLayout sliderRow(String glyph, SeekBar bar) {
+        LinearLayout row = new LinearLayout(ctx);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView icon = tv(glyph, 15f, 0xCCFFFFFF, false);
+        icon.setPadding(0, 0, dp(8), 0);
+        row.addView(icon);
+        row.addView(bar, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        return row;
+    }
+
+    private LinearLayout.LayoutParams sliderLp() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(8);
+        return lp;
+    }
+
+    private boolean torchOn = false;
+
+    private boolean toggleTorch() {
+        try {
+            CameraManager cm = (CameraManager) ctx.getSystemService(Context.CAMERA_SERVICE);
+            if (cm == null) return torchOn;
+            torchOn = !torchOn;
+            cm.setTorchMode(cm.getCameraIdList()[0], torchOn);
+            return torchOn;
+        } catch (Exception e) {
+            torchOn = false;
+            return false;
+        }
+    }
+
+    private void openPanel(String action) {
+        try {
+            Intent i = new Intent(action);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (Build.VERSION.SDK_INT >= 34) {
+                PendingIntent pi = PendingIntent.getActivity(ctx, 1, i,
+                        PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+                android.app.ActivityOptions opts = android.app.ActivityOptions.makeBasic();
+                opts.setPendingIntentBackgroundActivityStartMode(
+                        android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED);
+                pi.send(ctx, 1, null, null, null, null, opts.toBundle());
+            } else {
+                ctx.startActivity(i);
+            }
+        } catch (Exception ignored) {}
     }
 
     private void buildQuick() {
@@ -1916,10 +2093,14 @@ public class IslandController {
                 if (Math.abs(ux) > Math.abs(uy) && Math.abs(ux) > dp(48)) {
                     bump("swipes");
                     switchTask(ux < 0 ? 1 : -1);
+                } else if (uy < -dp(48) && open && mode == CTRL) {
+                    applyMode(NONE, false);
                 } else if (uy < -dp(48) && open) {
                     applyMode(mode, false);
                 } else if (uy > dp(48) && !open && (mode == CALL || mode == TIMER)) {
                     applyMode(mode, true);
+                } else if (uy > dp(48) && !open && mode == NONE) {
+                    applyMode(CTRL, false);
                 } else if (!moved && duration < 800) {
                     // a tap is a tap: tiny finger jitter no longer becomes a drag
                     onTap();
@@ -2241,6 +2422,8 @@ public class IslandController {
             applyMode(NONE, false);
         } else if ("live".equals(kind)) {
             demoLive();
+        } else if ("center".equals(kind)) {
+            applyMode(CTRL, false);
         } else if ("resetpos".equals(kind)) {
             resetPosition();
         } else if ("poscam".equals(kind)) {

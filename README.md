@@ -38,6 +38,8 @@ started from, and the iOS/ActivityKit specs written along the way.
 - Secondary bubble for the next activity, tap to swap it into focus.
 - In-app call screen reached from the expanded card.
 - Position lock, presets, Material You accent colours.
+- **Control Center**: swipe down on the capsule for a panel with torch toggle,
+  Wi-Fi panel, Bluetooth settings, brightness and media-volume sliders.
 - **Charging animation picker** in the app: *Orb* (liquid glass, Siri wave),
   *Ribbon* (orbiting particle ribbons), *Bolt* (icon card), *Pill* (compact ⚡ +
   %), or *Off* — tapping a style previews it instantly.
